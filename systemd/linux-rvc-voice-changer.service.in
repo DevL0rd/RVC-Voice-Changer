@@ -1,0 +1,16 @@
+[Unit]
+Description=Linux RVC Voice Changer daemon
+After=pipewire.service wireplumber.service graphical-session.target
+Wants=pipewire.service wireplumber.service
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO_DIR@
+ExecStart=@REPO_DIR@/bin/rvc-voice-changer
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+CPUWeight=250
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linux-rvc-voice-changer"
+version = "0.1.0"
+description = "Accelerated or CPU RVC voice changer daemon and Plasma 6 applet"
+requires-python = ">=3.11"
+authors = [{ name = "DevL0rd", email = "dmhzmxn@gmail.com" }]
+
+[project.scripts]
+rvc-voice-changer = "rvc_voice_changer.daemon:main"
+rvc-voice-changer-ctl = "rvc_voice_changer.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

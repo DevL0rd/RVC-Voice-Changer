@@ -1,0 +1,14 @@
+numpy>=2.3
+scipy>=1.16
+faiss-cpu>=1.13
+librosa>=0.11
+soundfile>=0.13
+soxr
+transformers>=5.0
+torchcrepe
+torchfcpe
+einops
+local-attention
+noisereduce
+wget
+webrtcvad-wheels

@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+REPO_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export PYTHONPATH="$REPO_DIR/src:$REPO_DIR${PYTHONPATH:+:$PYTHONPATH}"
+if [ -x "$REPO_DIR/.venv/bin/python" ]; then
+    exec "$REPO_DIR/.venv/bin/python" -m rvc_voice_changer "$@"
+fi
+exec python3 -m rvc_voice_changer "$@"

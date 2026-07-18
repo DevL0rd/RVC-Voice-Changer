@@ -1,0 +1,48 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 17843
+  },
+  "models_dir": "models",
+  "audio": {
+    "input_device": "",
+    "output_device": "rvc_processing_sink",
+    "monitor_device": "",
+    "monitor_enabled": true,
+    "sample_rate": 48000,
+    "block_ms": 250,
+    "crossfade_ms": 50,
+    "extra_ms": 2500,
+    "input_gain_db": 0.0,
+    "output_gain_db": 0.0,
+    "monitor_gain_db": 24.0
+  },
+  "model": {
+    "selected": "",
+    "speaker_id": 0,
+    "pitch": 0,
+    "f0_method": "rmvpe",
+    "index_rate": 0.6,
+    "rms_mix_rate": 0.0,
+    "protect": 0.2,
+    "autotune": false,
+    "autotune_strength": 1.0,
+    "proposed_pitch": true,
+    "proposed_pitch_threshold": 255.0
+  },
+  "cleanup": {
+    "vad_enabled": false,
+    "vad_sensitivity": 3,
+    "noise_suppression": false,
+    "noise_suppression_strength": 0.5,
+    "noise_gate_db": -60.0,
+    "high_pass_hz": 80,
+    "low_pass_hz": 16000
+  },
+  "gpu": {
+    "backend": "auto",
+    "device": 0,
+    "allow_tf32": true,
+    "cpu_threads": 0
+  }
+}

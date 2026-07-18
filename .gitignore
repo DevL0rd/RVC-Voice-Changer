@@ -1,0 +1,22 @@
+# Local state and voice models
+config.json
+models/*
+!models/README.md
+rvc/models/
+*.pth
+*.index
+*.onnx
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
