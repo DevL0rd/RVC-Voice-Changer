@@ -5,6 +5,10 @@ import subprocess
 import threading
 
 
+PROCESSING_INPUT_NAME = "rvc_processing_input"
+VIRTUAL_MICROPHONE_NAME = "rvc_virtual_microphone"
+
+
 class VirtualMicrophone:
     """Owns the stable PipeWire nodes fed by converted or bypass audio."""
 
@@ -25,18 +29,22 @@ class VirtualMicrophone:
                 raise RuntimeError("pw-loopback is missing; install PipeWire audio tools")
             capture_props = " ".join(
                 (
-                    "media.class=Audio/Sink",
-                    "node.name=rvc_processing_sink",
-                    'node.description="RVC Processing Sink"',
-                    "audio.position=[ FL FR ]",
+                    "media.class=Stream/Input/Audio",
+                    f"node.name={PROCESSING_INPUT_NAME}",
+                    'node.description="RVC Private Processing Input"',
+                    "node.autoconnect=false",
+                    "node.dont-reconnect=true",
+                    "node.virtual=true",
+                    "audio.position=[ MONO ]",
                 )
             )
             playback_props = " ".join(
                 (
                     "media.class=Audio/Source",
-                    "node.name=rvc_virtual_microphone",
+                    f"node.name={VIRTUAL_MICROPHONE_NAME}",
                     'node.description="RVC Virtual Microphone"',
-                    "audio.position=[ FL FR ]",
+                    "node.virtual=true",
+                    "audio.position=[ MONO ]",
                 )
             )
             self._process = subprocess.Popen(

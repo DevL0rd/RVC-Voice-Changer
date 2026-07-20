@@ -27,7 +27,6 @@ PlasmoidItem {
     readonly property var profile: runtime.profile_ms || ({})
     readonly property var voices: snapshot.models || []
     readonly property var inputs: (snapshot.devices || {}).inputs || []
-    readonly property var outputs: (snapshot.devices || {}).outputs || []
     readonly property var monitors: (snapshot.devices || {}).monitors || []
     readonly property var profileStages: [
         { key: "capture_wait", label: i18n("Microphone capture wait") },
@@ -428,13 +427,6 @@ PlasmoidItem {
                         selectedId: root.audio.input_device || ""
                         onChosen: function(value) { root.patch("audio", "input_device", value) }
                     }
-                    DevicePicker {
-                        label: i18n("Output")
-                        help: i18n("The primary converted-audio destination. RVC Virtual Microphone is the normal choice for Discord and other chat applications. Choosing a physical output also plays converted audio there while the virtual microphone remains fed, which can cause audible feedback if that output reaches the input microphone.")
-                        entries: root.outputs
-                        selectedId: root.audio.output_device || ""
-                        onChosen: function(value) { root.patch("audio", "output_device", value) }
-                    }
                     QQC2.CheckBox {
                         text: i18n("Monitor converted voice")
                         checked: !!root.audio.monitor_enabled
@@ -458,7 +450,7 @@ PlasmoidItem {
                     }
                     TuningSlider {
                         label: i18n("Output gain"); value: root.audio.output_gain_db || 0
-                        help: i18n("Adjusts converted volume sent to RVC Virtual Microphone and the selected output. It does not improve model detection. High positive gain can clip the converted waveform and sound distorted in Discord; negative gain preserves headroom but may be too quiet.")
+                        help: i18n("Adjusts converted volume sent to RVC Virtual Microphone. It does not improve model detection. High positive gain can clip the converted waveform and sound distorted in Discord; negative gain preserves headroom but may be too quiet.")
                         from: -24; to: 24; stepSize: 0.5; suffix: " dB"; decimals: 1
                         onCommitted: function(value) { root.patch("audio", "output_gain_db", value) }
                     }

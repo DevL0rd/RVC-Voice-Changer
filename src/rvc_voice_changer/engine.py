@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 import shutil
@@ -10,7 +11,7 @@ from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from typing import Any, BinaryIO, Callable
 
-from .cable import VirtualMicrophone
+from .cable import PROCESSING_INPUT_NAME, VIRTUAL_MICROPHONE_NAME, VirtualMicrophone
 from .models import VoiceModel
 
 
@@ -153,9 +154,8 @@ class VoiceEngine:
         self.state.block_ms = self._block_frames * 1000.0 / sample_rate
         self._config = config
 
-        self.cable.start()
-        self._wait_for_node("rvc_processing_sink")
-        self.state.virtual_microphone = True
+        self._prepare_cable()
+        self._require_audio_source(input_device)
 
         self._converter = VoiceChanger(
             read_chunk_size=read_chunk_size,
@@ -178,14 +178,9 @@ class VoiceEngine:
 
         self._stop_event.clear()
         self._capture = self._open_capture(input_device, sample_rate, self._block_frames)
-        targets: list[tuple[str, str]] = [("rvc_processing_sink", "output")]
-        extra_output = str(audio.get("output_device") or "")
+        targets: list[tuple[str, str]] = [(PROCESSING_INPUT_NAME, "output")]
         monitor = str(audio.get("monitor_device") or "") if audio.get("monitor_enabled") else ""
-        known = {"rvc_processing_sink"}
-        if extra_output and extra_output not in known:
-            targets.append((extra_output, "output"))
-            known.add(extra_output)
-        if monitor and monitor not in known:
+        if monitor and monitor != PROCESSING_INPUT_NAME:
             targets.append((monitor, "monitor"))
         self._playbacks = [
             (self._open_playback(target, sample_rate, self._block_frames), role)
@@ -206,9 +201,7 @@ class VoiceEngine:
         with self._lock:
             self._deactivate(keep_cable=True)
             self.state.error = ""
-            self.cable.start()
-            self._wait_for_node("rvc_processing_sink")
-            self.state.virtual_microphone = True
+            self._prepare_cable()
 
             audio = config["audio"]
             input_device = str(audio.get("input_device") or "")
@@ -216,6 +209,7 @@ class VoiceEngine:
             self.state.status = "bypass"
             if not input_device:
                 return
+            self._require_audio_source(input_device)
 
             sample_rate = int(audio["sample_rate"])
             requested_frames = int(sample_rate * int(audio["block_ms"]) / 1000)
@@ -223,7 +217,7 @@ class VoiceEngine:
             self.state.block_ms = self._block_frames * 1000.0 / sample_rate
             self._stop_event.clear()
             self._capture = self._open_capture(input_device, sample_rate, self._block_frames)
-            playback = self._open_playback("rvc_processing_sink", sample_rate, self._block_frames)
+            playback = self._open_playback(PROCESSING_INPUT_NAME, sample_rate, self._block_frames)
             self._playbacks = [(playback, "bypass")]
             self._thread = threading.Thread(target=self._bypass_loop, name="rvc-bypass", daemon=True)
             self._thread.start()
@@ -260,6 +254,7 @@ class VoiceEngine:
                 self._event("error", f"Bypass stream failed: {error}")
 
     def _pw_cat_command(self, mode: str, target: str, sample_rate: int, block_frames: int) -> list[str]:
+        node_name = "rvc_capture_stream" if mode == "record" else "rvc_output_stream"
         return [
             "pw-cat",
             f"--{mode}",
@@ -276,6 +271,15 @@ class VoiceEngine:
             str(block_frames),
             "--target",
             target,
+            "--properties",
+            " ".join(
+                (
+                    "application.id=org.devl0rd.rvcvoicechanger",
+                    'application.name="Linux RVC Voice Changer"',
+                    f"node.name={node_name}",
+                    "node.dont-reconnect=true",
+                )
+            ),
             "-",
         ]
 
@@ -286,6 +290,21 @@ class VoiceEngine:
             stderr=subprocess.PIPE,
         )
         self._confirm_started(process, f"input {target}")
+        try:
+            self._confirm_capture_link(process, target)
+        except Exception:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=1)
+            for stream in (process.stdout, process.stderr):
+                if stream:
+                    with suppress(OSError, ValueError):
+                        stream.close()
+            raise
         return process
 
     def _open_playback(self, target: str, sample_rate: int, block_frames: int) -> subprocess.Popen[bytes]:
@@ -465,6 +484,125 @@ class VoiceEngine:
                 pass
             time.sleep(0.1)
         raise RuntimeError(f"PipeWire node {name} did not appear")
+
+    def _prepare_cable(self) -> None:
+        self.cable.start()
+        self._wait_for_node(PROCESSING_INPUT_NAME)
+        self.state.virtual_microphone = True
+        repaired = self._repair_virtual_microphone_consumers()
+        if repaired:
+            noun = "stream" if repaired == 1 else "streams"
+            self._event(
+                "warning",
+                f"Reconnected {repaired} application {noun} to RVC Virtual Microphone",
+            )
+
+    @staticmethod
+    def _repair_virtual_microphone_consumers() -> int:
+        """Move streams that fell back while the virtual source was unavailable."""
+        pactl = shutil.which("pactl")
+        if not pactl:
+            return 0
+        try:
+            source_result = subprocess.run(
+                [pactl, "-f", "json", "list", "sources"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            sources = json.loads(source_result.stdout)
+            virtual_source = next(
+                str(source["index"])
+                for source in sources
+                if source.get("name") == VIRTUAL_MICROPHONE_NAME
+            )
+            output_result = subprocess.run(
+                [pactl, "-f", "json", "list", "source-outputs"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            outputs = json.loads(output_result.stdout)
+            stale = [
+                str(output["index"])
+                for output in outputs
+                if (output.get("properties") or {}).get("target.object")
+                == VIRTUAL_MICROPHONE_NAME
+                and str(output.get("source")) != virtual_source
+            ]
+            for output_index in stale:
+                subprocess.run(
+                    [pactl, "move-source-output", output_index, VIRTUAL_MICROPHONE_NAME],
+                    check=True,
+                    capture_output=True,
+                    timeout=3,
+                )
+            return len(stale)
+        except (
+            FileNotFoundError,
+            json.JSONDecodeError,
+            StopIteration,
+            subprocess.SubprocessError,
+            TypeError,
+            ValueError,
+        ):
+            return 0
+
+    @staticmethod
+    def _pipewire_objects() -> list[dict[str, Any]]:
+        try:
+            result = subprocess.run(
+                ["pw-dump"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            objects = json.loads(result.stdout)
+        except (FileNotFoundError, json.JSONDecodeError, subprocess.SubprocessError) as error:
+            raise RuntimeError("Could not inspect PipeWire audio routing") from error
+        if not isinstance(objects, list):
+            raise RuntimeError("PipeWire returned an invalid audio graph")
+        return objects
+
+    @classmethod
+    def _require_audio_source(cls, target: str) -> None:
+        for item in cls._pipewire_objects():
+            props = (item.get("info") or {}).get("props") or {}
+            if props.get("node.name") != target:
+                continue
+            if str(props.get("media.class") or "").startswith("Audio/Source"):
+                return
+        raise RuntimeError(
+            f"Selected input microphone '{target}' is unavailable; choose an available input device"
+        )
+
+    @classmethod
+    def _confirm_capture_link(cls, process: subprocess.Popen[bytes], target: str) -> None:
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            objects = cls._pipewire_objects()
+            nodes = {
+                str((item.get("info") or {}).get("props", {}).get("node.name") or ""): item.get("id")
+                for item in objects
+                if item.get("type") == "PipeWire:Interface:Node"
+            }
+            target_id = nodes.get(target)
+            capture_id = nodes.get("rvc_capture_stream")
+            linked = any(
+                item.get("type") == "PipeWire:Interface:Link"
+                and (item.get("info") or {}).get("output-node-id") == target_id
+                and (item.get("info") or {}).get("input-node-id") == capture_id
+                for item in objects
+            )
+            if target_id is not None and capture_id is not None and linked:
+                return
+            if process.poll() is not None:
+                break
+            time.sleep(0.05)
+        raise RuntimeError(f"PipeWire did not connect the selected input microphone '{target}'")
 
     def _deactivate(self, keep_cable: bool) -> None:
         with self._lock:

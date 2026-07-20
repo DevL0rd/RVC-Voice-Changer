@@ -4,8 +4,10 @@ import json
 import subprocess
 from typing import Any
 
+from .cable import PROCESSING_INPUT_NAME, VIRTUAL_MICROPHONE_NAME
 
-VIRTUAL_NODE_NAMES = {"rvc_processing_sink", "rvc_virtual_microphone"}
+
+VIRTUAL_NODE_NAMES = {PROCESSING_INPUT_NAME, VIRTUAL_MICROPHONE_NAME}
 
 
 def _label(props: dict[str, Any]) -> str:
@@ -49,5 +51,4 @@ def list_audio_devices() -> dict[str, list[dict[str, str]]]:
     groups["inputs"].sort(key=lambda item: item["name"].casefold())
     groups["outputs"].sort(key=lambda item: item["name"].casefold())
     groups["monitors"] = list(groups["outputs"])
-    groups["outputs"].insert(0, {"id": "rvc_processing_sink", "name": "RVC Virtual Microphone"})
     return groups

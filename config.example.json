@@ -6,7 +6,6 @@
   "models_dir": "models",
   "audio": {
     "input_device": "",
-    "output_device": "rvc_processing_sink",
     "monitor_device": "",
     "monitor_enabled": true,
     "sample_rate": 48000,

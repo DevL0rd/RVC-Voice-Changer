@@ -12,7 +12,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "models_dir": "models",
     "audio": {
         "input_device": "",
-        "output_device": "rvc_processing_sink",
         "monitor_device": "",
         "monitor_enabled": True,
         "sample_rate": 48000,

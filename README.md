@@ -13,7 +13,7 @@ microphone.
 - Automatic selection of the best available inference device
 - Persistent **RVC Virtual Microphone** for Discord and other applications
 - Microphone passthrough while conversion is disabled
-- Input, output, and monitor-device selection
+- Input and monitor-device selection
 - Automatic voice-model discovery
 - Pitch, index, protection, cleanup, gain, and latency controls
 - Per-stage latency profiling and rolling logs
