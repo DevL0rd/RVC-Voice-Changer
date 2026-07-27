@@ -18,6 +18,7 @@ PlasmoidItem {
     property bool logsExpanded: false
     property var logEntries: []
     property int latestLogId: 0
+    property int settingsPage: 0
     property var menuFlickable: null
     readonly property var cfg: snapshot.config || ({})
     readonly property var audio: cfg.audio || ({})
@@ -175,6 +176,12 @@ PlasmoidItem {
         menuFlickable.contentY = Math.max(minimum, Math.min(maximum, menuFlickable.contentY - delta))
         wheel.accepted = true
     }
+    function selectSettingsPage(index) {
+        settingsPage = index
+        Qt.callLater(function() {
+            if (menuFlickable) menuFlickable.contentY = menuFlickable.originY
+        })
+    }
 
     Component.onCompleted: refresh()
     Timer { interval: 2000; running: root.expanded; repeat: true; onTriggered: root.refresh() }
@@ -186,7 +193,7 @@ PlasmoidItem {
     }
     Timer {
         interval: 2000
-        running: root.expanded && root.logsExpanded
+        running: root.expanded && root.settingsPage === 3 && root.logsExpanded
         repeat: true
         onTriggered: root.refreshLogs()
     }
@@ -330,6 +337,8 @@ PlasmoidItem {
         property bool available: true
         signal switched(bool value)
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        Layout.preferredWidth: 1
         spacing: 0
         PlasmaComponents.Label {
             text: pipelineToggle.label
@@ -530,9 +539,24 @@ PlasmoidItem {
                     Layout.rightMargin: Kirigami.Units.largeSpacing
                 }
 
+                QQC2.TabBar {
+                    id: settingsTabs
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.largeSpacing
+                    currentIndex: root.settingsPage
+                    onCurrentIndexChanged: if (root.settingsPage !== currentIndex)
+                        root.selectSettingsPage(currentIndex)
+                    QQC2.TabButton { text: i18n("Main"); width: settingsTabs.availableWidth / 4 }
+                    QQC2.TabButton { text: i18n("Translate"); width: settingsTabs.availableWidth / 4 }
+                    QQC2.TabButton { text: i18n("Tuning"); width: settingsTabs.availableWidth / 4 }
+                    QQC2.TabButton { text: i18n("System"); width: settingsTabs.availableWidth / 4 }
+                }
+
                 Card {
                     title: i18n("Voice")
                     collapsible: false
+                    visible: root.settingsPage === 0
                     QQC2.ComboBox {
                         Layout.fillWidth: true
                         wheelEnabled: false
@@ -591,7 +615,59 @@ PlasmoidItem {
                 }
 
                 Card {
+                    title: i18n("Application translation")
+                    collapsible: false
+                    visible: root.settingsPage === 0
+                    DevicePicker {
+                        label: i18n("Running application")
+                        entries: root.applications
+                        selectedId: root.incomingTranslate.application || ""
+                        help: i18n("Captures one currently running PipeWire application playback stream. If the application restarts, select its new stream again.")
+                        onChosen: function(value) { root.patch("incoming_translate", "application", value) }
+                    }
+                    DevicePicker {
+                        label: i18n("Translated audio output")
+                        entries: root.outputs
+                        selectedId: root.incomingTranslate.output_device || ""
+                        help: i18n("Plays translated application speech through this device. This is independent from the microphone monitor device.")
+                        onChosen: function(value) { root.patch("incoming_translate", "output_device", value) }
+                    }
+                    DevicePicker {
+                        label: i18n("Translate application to")
+                        entries: root.translationLanguages
+                        selectedId: root.incomingTranslate.target_language || "en"
+                        help: i18n("Selects the application-audio translation language. English is the default, and Gemini detects the application's source language automatically.")
+                        onChosen: function(value) { root.patch("incoming_translate", "target_language", value) }
+                    }
+                    PlasmaComponents.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        opacity: 0.65
+                        text: i18n("The application's original audio continues playing normally. Translated speech is added on the selected output device.")
+                    }
+                    PlasmaComponents.Label {
+                        visible: !!root.incomingTranslate.enabled
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        opacity: root.runtime.incoming_translation_status === "error" ? 1.0 : 0.65
+                        color: root.runtime.incoming_translation_status === "error"
+                            ? Kirigami.Theme.negativeTextColor
+                            : Kirigami.Theme.textColor
+                        text: root.runtime.incoming_translation_status === "running"
+                            ? i18n("Connected · application translation is live")
+                            : root.runtime.incoming_translation_status === "connecting"
+                                ? i18n("Connecting application translation…")
+                                : root.runtime.incoming_translation_status === "reconnecting"
+                                    ? i18n("Reconnecting application translation…")
+                                    : root.runtime.incoming_translation_status === "error"
+                                        ? i18n("Application translation unavailable: %1", root.runtime.incoming_translation_error || i18n("unknown error"))
+                                        : i18n("Starting application translation…")
+                    }
+                }
+
+                Card {
                     title: i18n("Audio routing")
+                    visible: root.settingsPage === 0
                     DevicePicker {
                         label: i18n("Input microphone")
                         help: i18n("The physical microphone captured by the converter. Selecting the wrong source can capture silence, desktop audio, or feedback. Changing it while running restarts the audio pipeline and causes a short interruption.")
@@ -636,6 +712,7 @@ PlasmoidItem {
 
                 Card {
                     title: i18n("Model settings")
+                    visible: root.settingsPage === 2
                     TuningSlider {
                         label: i18n("Pitch"); value: root.modelSettings.pitch || 0
                         help: i18n("Shifts detected pitch in semitones before synthesis. Positive values raise the voice and negative values lower it; 12 semitones equals one octave. Large shifts can make speech unnatural, move it outside the model's trained range, and increase metallic or unstable artifacts.")
@@ -714,6 +791,7 @@ PlasmoidItem {
 
                 Card {
                     title: i18n("Latency")
+                    visible: root.settingsPage === 2
                     TuningSlider {
                         label: i18n("Block size"); value: root.audio.block_ms || 250
                         help: i18n("How much new microphone audio is processed per inference block. Smaller blocks reduce responsiveness delay but run the models more often, increasing device load and the risk of underruns, crackles, or unstable pitch. CPU inference commonly needs a larger block than GPU inference. Larger blocks are more reliable and efficient but add directly noticeable latency. Changing this restarts the stream.")
@@ -751,6 +829,7 @@ PlasmoidItem {
 
                 Card {
                     title: i18n("Cleanup")
+                    visible: root.settingsPage === 2
                     QQC2.CheckBox {
                         text: i18n("Voice activity detection")
                         checked: !!root.cleanup.vad_enabled
@@ -806,6 +885,7 @@ PlasmoidItem {
 
                 Card {
                     title: i18n("Live latency profile")
+                    visible: root.settingsPage === 2
                     PlasmaComponents.Label {
                         visible: !root.runtime.enabled || root.profile.processing_total === undefined
                         text: root.runtime.enabled
@@ -900,6 +980,7 @@ PlasmoidItem {
 
                 Card {
                     title: i18n("Inference")
+                    visible: root.settingsPage === 3
                     RowLayout {
                         Layout.fillWidth: true
                         Kirigami.Icon { source: "checkmark"; Layout.preferredWidth: Kirigami.Units.iconSizes.small; Layout.preferredHeight: width }
@@ -971,7 +1052,8 @@ PlasmoidItem {
 
                 Card {
                     title: i18n("Live translation")
-                    collapsible: true
+                    collapsible: false
+                    visible: root.settingsPage === 1
                     PlasmaComponents.Label {
                         text: i18n("Microphone translation")
                         font.weight: Font.DemiBold
@@ -1045,61 +1127,11 @@ PlasmoidItem {
                                         ? i18n("Translation unavailable: %1", root.runtime.translation_error || i18n("unknown error"))
                                         : i18n("Starting translation…")
                     }
-                    Kirigami.Separator { Layout.fillWidth: true }
-                    PlasmaComponents.Label {
-                        text: i18n("Application translation")
-                        font.weight: Font.DemiBold
-                        Layout.fillWidth: true
-                    }
-                    DevicePicker {
-                        label: i18n("Running application")
-                        entries: root.applications
-                        selectedId: root.incomingTranslate.application || ""
-                        help: i18n("Captures one currently running PipeWire application playback stream. If the application restarts, select its new stream again.")
-                        onChosen: function(value) { root.patch("incoming_translate", "application", value) }
-                    }
-                    DevicePicker {
-                        label: i18n("Translated audio output")
-                        entries: root.outputs
-                        selectedId: root.incomingTranslate.output_device || ""
-                        help: i18n("Plays translated application speech through this device. This is independent from the microphone monitor device.")
-                        onChosen: function(value) { root.patch("incoming_translate", "output_device", value) }
-                    }
-                    DevicePicker {
-                        label: i18n("Translate application to")
-                        entries: root.translationLanguages
-                        selectedId: root.incomingTranslate.target_language || "en"
-                        help: i18n("Selects the application-audio translation language. English is the default, and Gemini detects the application's source language automatically.")
-                        onChosen: function(value) { root.patch("incoming_translate", "target_language", value) }
-                    }
-                    PlasmaComponents.Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.Wrap
-                        opacity: 0.65
-                        text: i18n("The application's original audio continues playing normally. Translated speech is added on the selected output device.")
-                    }
-                    PlasmaComponents.Label {
-                        visible: !!root.incomingTranslate.enabled
-                        Layout.fillWidth: true
-                        wrapMode: Text.Wrap
-                        opacity: root.runtime.incoming_translation_status === "error" ? 1.0 : 0.65
-                        color: root.runtime.incoming_translation_status === "error"
-                            ? Kirigami.Theme.negativeTextColor
-                            : Kirigami.Theme.textColor
-                        text: root.runtime.incoming_translation_status === "running"
-                            ? i18n("Connected · application translation is live")
-                            : root.runtime.incoming_translation_status === "connecting"
-                                ? i18n("Connecting application translation…")
-                                : root.runtime.incoming_translation_status === "reconnecting"
-                                    ? i18n("Reconnecting application translation…")
-                                    : root.runtime.incoming_translation_status === "error"
-                                        ? i18n("Application translation unavailable: %1", root.runtime.incoming_translation_error || i18n("unknown error"))
-                                        : i18n("Starting application translation…")
-                    }
                 }
 
                 Card {
                     title: i18n("Keyboard shortcuts")
+                    visible: root.settingsPage === 3
                     collapsible: true
                     PlasmaComponents.Label {
                         Layout.fillWidth: true
@@ -1128,6 +1160,7 @@ PlasmoidItem {
 
                 Card {
                     title: i18n("Rolling logs")
+                    visible: root.settingsPage === 3
                     onSectionExpandedChanged: {
                         root.logsExpanded = sectionExpanded
                         if (sectionExpanded && root.expanded) root.refreshLogs()
