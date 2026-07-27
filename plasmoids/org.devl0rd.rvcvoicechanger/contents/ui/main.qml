@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
+import org.kde.kquickcontrols as KQuickControls
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.plasmoid
 
@@ -23,11 +24,20 @@ PlasmoidItem {
     readonly property var modelSettings: cfg.model || ({})
     readonly property var cleanup: cfg.cleanup || ({})
     readonly property var gpu: cfg.gpu || ({})
+    readonly property var translate: cfg.translate || ({})
+    readonly property var incomingTranslate: cfg.incoming_translate || ({})
+    readonly property var shortcuts: cfg.shortcuts || ({})
     readonly property var runtime: snapshot.runtime || ({})
     readonly property var profile: runtime.profile_ms || ({})
     readonly property var voices: snapshot.models || []
     readonly property var inputs: (snapshot.devices || {}).inputs || []
     readonly property var monitors: (snapshot.devices || {}).monitors || []
+    readonly property var outputs: (snapshot.devices || {}).outputs || []
+    readonly property var applications: (snapshot.devices || {}).applications || []
+    readonly property var translationLanguages: snapshot.translation_languages || []
+    readonly property color voiceAccent: Kirigami.Theme.positiveTextColor
+    readonly property color translateAccent: Kirigami.Theme.linkColor
+    readonly property color incomingAccent: Kirigami.Theme.neutralTextColor
     readonly property var profileStages: [
         { key: "capture_wait", label: i18n("Microphone capture wait") },
         { key: "input_preprocess", label: i18n("Input gain and filters") },
@@ -51,9 +61,7 @@ PlasmoidItem {
     Plasmoid.icon: runtime.enabled ? "microphone-sensitivity-high" : "audio-input-microphone"
     Plasmoid.title: i18n("RVC Voice Changer")
     toolTipMainText: i18n("RVC Voice Changer")
-    toolTipSubText: runtime.enabled
-        ? i18n("On · %1", selectedVoiceName())
-        : runtime.status === "error" ? runtime.error : i18n("Bypass · original microphone")
+    toolTipSubText: trayStatusText()
     preferredRepresentation: compactRepresentation
 
     function request(method, path, payload, done) {
@@ -66,7 +74,11 @@ PlasmoidItem {
             try { data = JSON.parse(xhr.responseText || "{}") } catch (error) {}
             if (xhr.status >= 200 && xhr.status < 300) {
                 requestError = ""
-                if (data.config) snapshot = data
+                if (data.config) {
+                    if (!data.devices || Object.keys(data.devices).length === 0)
+                        data.devices = snapshot.devices
+                    snapshot = data
+                }
                 if (done) done(data)
             } else {
                 requestError = data.error || i18n("Daemon is unavailable")
@@ -81,6 +93,7 @@ PlasmoidItem {
     }
 
     function refresh() { request("GET", "/state", undefined, null) }
+    function refreshSummary() { request("GET", "/state?devices=0", undefined, null) }
     function refreshLogs() {
         request("GET", "/logs?after=" + latestLogId, undefined, function(data) {
             if (data.reset) logEntries = []
@@ -115,6 +128,15 @@ PlasmoidItem {
     function selectedVoiceName() {
         var index = indexOfId(voices, modelSettings.selected || "")
         return index >= 0 ? voices[index].name : i18n("No voice selected")
+    }
+    function trayStatusText() {
+        if (runtime.status === "error") return runtime.error
+        return i18n(
+            "Voice %1 · Mic translate %2 · App translate %3",
+            runtime.enabled ? i18n("On") : i18n("Off"),
+            translate.enabled ? i18n("On") : i18n("Off"),
+            incomingTranslate.enabled ? i18n("On") : i18n("Off")
+        )
     }
     function stageLabel(key) {
         for (var i = 0; i < profileStages.length; ++i)
@@ -157,6 +179,12 @@ PlasmoidItem {
     Component.onCompleted: refresh()
     Timer { interval: 2000; running: root.expanded; repeat: true; onTriggered: root.refresh() }
     Timer {
+        interval: 1000
+        running: !root.expanded
+        repeat: true
+        onTriggered: root.refreshSummary()
+    }
+    Timer {
         interval: 2000
         running: root.expanded && root.logsExpanded
         repeat: true
@@ -172,9 +200,39 @@ PlasmoidItem {
         Kirigami.Icon {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
+            anchors.bottomMargin: Kirigami.Units.smallSpacing * 1.5
             source: root.runtime.enabled ? "microphone-sensitivity-high" : "audio-input-microphone"
             color: root.runtime.enabled ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.textColor
         }
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 1
+            spacing: 2
+            StatusDot {
+                active: !!root.runtime.enabled
+                accent: root.voiceAccent
+            }
+            StatusDot {
+                active: !!root.translate.enabled
+                accent: root.translateAccent
+            }
+            StatusDot {
+                active: !!root.incomingTranslate.enabled
+                accent: root.incomingAccent
+            }
+        }
+    }
+
+    component StatusDot: Rectangle {
+        required property bool active
+        required property color accent
+        width: 5
+        height: 5
+        radius: width / 2
+        color: active ? accent : Qt.alpha(Kirigami.Theme.backgroundColor, 0.75)
+        border.width: 1
+        border.color: active ? Qt.lighter(accent, 1.25) : Qt.alpha(accent, 0.55)
     }
 
     component Card: Rectangle {
@@ -262,6 +320,66 @@ PlasmoidItem {
         }
     }
 
+    component PipelineToggle: ColumnLayout {
+        id: pipelineToggle
+        property string label: ""
+        property string latency: i18n("— ms")
+        property string help: ""
+        property color accent: Kirigami.Theme.textColor
+        property bool active: false
+        property bool available: true
+        signal switched(bool value)
+        Layout.fillWidth: true
+        spacing: 0
+        PlasmaComponents.Label {
+            text: pipelineToggle.label
+            color: pipelineToggle.active
+                ? pipelineToggle.accent
+                : Kirigami.Theme.disabledTextColor
+            font: Kirigami.Theme.smallFont
+            horizontalAlignment: Text.AlignHCenter
+            Layout.fillWidth: true
+        }
+        QQC2.Switch {
+            checked: pipelineToggle.active
+            enabled: pipelineToggle.available
+            palette.highlight: pipelineToggle.accent
+            Layout.alignment: Qt.AlignHCenter
+            onToggled: pipelineToggle.switched(checked)
+            Accessible.name: pipelineToggle.label
+            QQC2.ToolTip.visible: hovered
+            QQC2.ToolTip.delay: 450
+            QQC2.ToolTip.text: root.formatTooltip(pipelineToggle.help)
+        }
+        PlasmaComponents.Label {
+            text: pipelineToggle.latency
+            color: pipelineToggle.active
+                ? pipelineToggle.accent
+                : Kirigami.Theme.disabledTextColor
+            horizontalAlignment: Text.AlignHCenter
+            Layout.fillWidth: true
+        }
+    }
+
+    component ShortcutPicker: RowLayout {
+        id: shortcutPicker
+        property string label: ""
+        property string sequence: ""
+        signal changed(string sequence)
+        Layout.fillWidth: true
+        PlasmaComponents.Label {
+            text: shortcutPicker.label
+            Layout.fillWidth: true
+        }
+        KQuickControls.KeySequenceItem {
+            keySequence: shortcutPicker.sequence
+            multiKeyShortcutsAllowed: false
+            modifierOnlyAllowed: false
+            modifierlessAllowed: false
+            onKeySequenceModified: shortcutPicker.changed(String(keySequence))
+        }
+    }
+
     component TuningSlider: ColumnLayout {
         id: tune
         property string label: ""
@@ -340,29 +458,65 @@ PlasmoidItem {
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.margins: Kirigami.Units.largeSpacing
-                    Layout.bottomMargin: Kirigami.Units.smallSpacing
                     Kirigami.Icon {
                         source: root.runtime.enabled ? "microphone-sensitivity-high" : "audio-input-microphone"
                         Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                         Layout.preferredHeight: width
                     }
-                    ColumnLayout {
+                    PlasmaComponents.Label {
+                        text: i18n("RVC Voice Changer")
+                        font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.2
+                        font.weight: Font.Bold
                         Layout.fillWidth: true
-                        spacing: 0
-                        PlasmaComponents.Label { text: i18n("RVC Voice Changer"); font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.2; font.weight: Font.Bold }
-                        PlasmaComponents.Label {
-                            text: root.runtime.enabled
-                                ? i18n("Live · %1 ms inference", Number(root.runtime.latency_ms || 0).toFixed(1))
-                                : i18n("Bypass · original microphone is live")
-                            color: root.runtime.enabled ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
-                        }
                     }
-                    QQC2.Switch {
-                        checked: !!root.runtime.enabled
-                        onToggled: root.setEnabled(checked)
-                        QQC2.ToolTip.visible: hovered
-                        QQC2.ToolTip.delay: 450
-                        QQC2.ToolTip.text: root.formatTooltip(i18n("Switches real-time voice conversion on or off. Starting loads the selected RVC, ContentVec, and pitch models onto the chosen inference device; startup can take several seconds and uses GPU or system memory. Turning it off unloads those models but keeps the same RVC Virtual Microphone present and passes your selected physical microphone through unchanged, so Discord keeps a stable input device."))
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.largeSpacing
+                    Layout.bottomMargin: Kirigami.Units.smallSpacing
+                    spacing: Kirigami.Units.largeSpacing
+                    PipelineToggle {
+                        label: i18n("Voice")
+                        accent: root.voiceAccent
+                        active: !!root.runtime.enabled
+                        latency: active
+                            ? i18n("%1 ms", Number(root.runtime.latency_ms || 0).toFixed(1))
+                            : i18n("— ms")
+                        help: i18n("Switches RVC voice conversion on or off. Translation controls remain independent.")
+                        onSwitched: function(value) { root.setEnabled(value) }
+                    }
+                    PipelineToggle {
+                        label: i18n("Mic translate")
+                        accent: root.translateAccent
+                        active: !!root.translate.enabled
+                        available: active || !!root.translate.api_key_set
+                        latency: root.runtime.translation_status === "running"
+                            && Number(root.runtime.translation_latency_ms || 0) > 0
+                            ? i18n("%1 ms", Number(root.runtime.translation_latency_ms).toFixed(1))
+                            : active ? i18n("… ms") : i18n("— ms")
+                        help: root.translate.api_key_set
+                            ? i18n("Translates microphone output. With Voice enabled it translates the converted voice; otherwise it translates the original microphone.")
+                            : i18n("Save a Gemini API key in Live translation settings first.")
+                        onSwitched: function(value) { root.patch("translate", "enabled", value) }
+                    }
+                    PipelineToggle {
+                        label: i18n("App translate")
+                        accent: root.incomingAccent
+                        active: !!root.incomingTranslate.enabled
+                        available: active || (!!root.translate.api_key_set
+                            && !!root.incomingTranslate.application
+                            && root.indexOfId(root.applications, root.incomingTranslate.application) >= 0
+                            && !!root.incomingTranslate.output_device)
+                        latency: root.runtime.incoming_translation_status === "running"
+                            && Number(root.runtime.incoming_translation_latency_ms || 0) > 0
+                            ? i18n("%1 ms", Number(root.runtime.incoming_translation_latency_ms).toFixed(1))
+                            : active ? i18n("… ms") : i18n("— ms")
+                        help: available
+                            ? i18n("Translates the selected running application's audio to its own output device.")
+                            : i18n("Choose a running application and an application-translation output device below first.")
+                        onSwitched: function(value) { root.patch("incoming_translate", "enabled", value) }
                     }
                 }
 
@@ -390,6 +544,24 @@ PlasmoidItem {
                         QQC2.ToolTip.visible: hovered
                         QQC2.ToolTip.delay: 450
                         QQC2.ToolTip.text: root.formatTooltip(i18n("Selects the target RVC voice. Each entry represents one model folder containing a .pth file and, optionally, a .index file. Changing voices while running reloads the inference pipeline and briefly interrupts audio. Model quality and training data have the largest effect on the final voice."))
+                    }
+                    DevicePicker {
+                        label: i18n("Translate to")
+                        entries: root.translationLanguages
+                        selectedId: root.translate.target_language || "en"
+                        help: i18n("Selects the language spoken by Gemini Live Translate. Gemini detects the input language automatically. Changing this reconnects the translation stream when translation is enabled.")
+                        onChosen: function(value) { root.patch("translate", "target_language", value) }
+                    }
+                    TuningSlider {
+                        label: i18n("Original voice volume")
+                        value: Number(root.translate.original_voice_volume || 0) * 100
+                        help: i18n("Mixes the immediate microphone signal into the RVC Virtual Microphone while translated speech arrives later. With Voice enabled, the immediate signal is voice-changed; with Voice disabled, it is the original microphone. Set this to 0% for translated speech only.")
+                        from: 0
+                        to: 100
+                        stepSize: 1
+                        suffix: "%"
+                        decimals: 0
+                        onCommitted: function(value) { root.patch("translate", "original_voice_volume", value / 100) }
                     }
                     RowLayout {
                         Layout.fillWidth: true
@@ -794,6 +966,163 @@ PlasmoidItem {
                         opacity: 0.65
                         wrapMode: Text.Wrap
                         Layout.fillWidth: true
+                    }
+                }
+
+                Card {
+                    title: i18n("Live translation")
+                    collapsible: true
+                    PlasmaComponents.Label {
+                        text: i18n("Microphone translation")
+                        font.weight: Font.DemiBold
+                        Layout.fillWidth: true
+                    }
+                    PlasmaComponents.Label {
+                        visible: !root.translate.api_key_set
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        color: Kirigami.Theme.neutralTextColor
+                        text: i18n("Save an API key below to enable the translation switches at the top.")
+                    }
+                    QQC2.CheckBox {
+                        text: i18n("Keep speech already in the target language")
+                        checked: !!root.translate.echo_target_language
+                        onToggled: root.patch("translate", "echo_target_language", checked)
+                        QQC2.ToolTip.visible: hovered
+                        QQC2.ToolTip.delay: 450
+                        QQC2.ToolTip.text: root.formatTooltip(i18n("When enabled, Gemini repeats speech that is already in the selected target language. When disabled, it stays silent for that speech. Leave this off unless callers may already speak the target language; enabling it can introduce artifacts from background noise or music."))
+                    }
+                    Kirigami.Separator { Layout.fillWidth: true }
+                    PlasmaComponents.Label {
+                        text: i18n("Gemini API key")
+                        opacity: 0.72
+                        font: Kirigami.Theme.smallFont
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        QQC2.TextField {
+                            id: translateApiKey
+                            Layout.fillWidth: true
+                            placeholderText: root.translate.api_key_set
+                                ? i18n("API key saved — enter to replace")
+                                : i18n("Enter API key")
+                            echoMode: TextInput.Password
+                            onEditingFinished: {
+                                var key = text.trim()
+                                if (key !== "") {
+                                    root.patch("translate", "api_key", key)
+                                    clear()
+                                }
+                            }
+                            QQC2.ToolTip.visible: hovered
+                            QQC2.ToolTip.delay: 450
+                            QQC2.ToolTip.text: root.formatTooltip(i18n("Stored only in your local user configuration with owner-only file permissions. The key is never returned by the daemon's state API. Entering a new key replaces the saved one when you leave this field."))
+                        }
+                        QQC2.Button {
+                            text: i18n("Clear")
+                            enabled: !!root.translate.api_key_set
+                            onClicked: {
+                                translateApiKey.clear()
+                                root.patch("translate", "api_key", "")
+                            }
+                        }
+                    }
+                    PlasmaComponents.Label {
+                        visible: !!root.translate.enabled
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        opacity: root.runtime.translation_status === "error" ? 1.0 : 0.65
+                        color: root.runtime.translation_status === "error"
+                            ? Kirigami.Theme.negativeTextColor
+                            : Kirigami.Theme.textColor
+                        text: root.runtime.translation_status === "running"
+                            ? i18n("Connected · translated audio is live")
+                            : root.runtime.translation_status === "connecting"
+                                ? i18n("Connecting to Gemini…")
+                                : root.runtime.translation_status === "reconnecting"
+                                    ? i18n("Reconnecting to Gemini…")
+                                    : root.runtime.translation_status === "error"
+                                        ? i18n("Translation unavailable: %1", root.runtime.translation_error || i18n("unknown error"))
+                                        : i18n("Starting translation…")
+                    }
+                    Kirigami.Separator { Layout.fillWidth: true }
+                    PlasmaComponents.Label {
+                        text: i18n("Application translation")
+                        font.weight: Font.DemiBold
+                        Layout.fillWidth: true
+                    }
+                    DevicePicker {
+                        label: i18n("Running application")
+                        entries: root.applications
+                        selectedId: root.incomingTranslate.application || ""
+                        help: i18n("Captures one currently running PipeWire application playback stream. If the application restarts, select its new stream again.")
+                        onChosen: function(value) { root.patch("incoming_translate", "application", value) }
+                    }
+                    DevicePicker {
+                        label: i18n("Translated audio output")
+                        entries: root.outputs
+                        selectedId: root.incomingTranslate.output_device || ""
+                        help: i18n("Plays translated application speech through this device. This is independent from the microphone monitor device.")
+                        onChosen: function(value) { root.patch("incoming_translate", "output_device", value) }
+                    }
+                    DevicePicker {
+                        label: i18n("Translate application to")
+                        entries: root.translationLanguages
+                        selectedId: root.incomingTranslate.target_language || "en"
+                        help: i18n("Selects the application-audio translation language. English is the default, and Gemini detects the application's source language automatically.")
+                        onChosen: function(value) { root.patch("incoming_translate", "target_language", value) }
+                    }
+                    PlasmaComponents.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        opacity: 0.65
+                        text: i18n("The application's original audio continues playing normally. Translated speech is added on the selected output device.")
+                    }
+                    PlasmaComponents.Label {
+                        visible: !!root.incomingTranslate.enabled
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        opacity: root.runtime.incoming_translation_status === "error" ? 1.0 : 0.65
+                        color: root.runtime.incoming_translation_status === "error"
+                            ? Kirigami.Theme.negativeTextColor
+                            : Kirigami.Theme.textColor
+                        text: root.runtime.incoming_translation_status === "running"
+                            ? i18n("Connected · application translation is live")
+                            : root.runtime.incoming_translation_status === "connecting"
+                                ? i18n("Connecting application translation…")
+                                : root.runtime.incoming_translation_status === "reconnecting"
+                                    ? i18n("Reconnecting application translation…")
+                                    : root.runtime.incoming_translation_status === "error"
+                                        ? i18n("Application translation unavailable: %1", root.runtime.incoming_translation_error || i18n("unknown error"))
+                                        : i18n("Starting application translation…")
+                    }
+                }
+
+                Card {
+                    title: i18n("Keyboard shortcuts")
+                    collapsible: true
+                    PlasmaComponents.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        opacity: 0.65
+                        text: i18n("These shortcuts work globally. Clear a shortcut to disable it.")
+                    }
+                    ShortcutPicker {
+                        label: i18n("Toggle voice change")
+                        sequence: root.shortcuts.voice_change || ""
+                        onChanged: function(value) { root.patch("shortcuts", "voice_change", value) }
+                    }
+                    ShortcutPicker {
+                        label: i18n("Toggle microphone translation")
+                        sequence: root.shortcuts.translation_out === undefined
+                            ? "Alt+T"
+                            : root.shortcuts.translation_out
+                        onChanged: function(value) { root.patch("shortcuts", "translation_out", value) }
+                    }
+                    ShortcutPicker {
+                        label: i18n("Toggle application translation")
+                        sequence: root.shortcuts.translation_in || ""
+                        onChanged: function(value) { root.patch("shortcuts", "translation_in", value) }
                     }
                 }
 

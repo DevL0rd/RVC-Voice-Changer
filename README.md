@@ -13,6 +13,8 @@ microphone.
 - Automatic selection of the best available inference device
 - Persistent **RVC Virtual Microphone** for Discord and other applications
 - Microphone passthrough while conversion is disabled
+- Independent microphone and application-audio translation
+- Configurable KDE global shortcuts for each voice/translation pipeline
 - Input and monitor-device selection
 - Automatic voice-model discovery
 - Pitch, index, protection, cleanup, gain, and latency controls
@@ -21,7 +23,7 @@ microphone.
 
 ## Requirements
 
-- Linux with PipeWire and WirePlumber
+- Linux with PipeWire, WirePlumber, and PipeWire-Pulse (`pactl`)
 - Plasma 6
 - Python 3.11 or newer
 - An NVIDIA or AMD GPU for accelerated inference, or a supported CPU
@@ -65,6 +67,38 @@ Use **Open folder** in the widget to open the correct location, then select
 Select **RVC Virtual Microphone** as the input device in Discord. The same
 device carries converted audio while the voice changer is on and your normal
 microphone audio while it is off.
+
+Plasma classifies software-only microphones as virtual devices. To manage the
+RVC microphone from the Audio Volume tray applet, enable **Show virtual devices**.
+
+## Live translation
+
+Expand **Live translation** in the applet, choose a target language, and save a
+Gemini API key before enabling translated output. Translation uses the
+`gemini-3.5-live-translate-preview` model and therefore requires an internet
+connection. With voice conversion enabled, translation runs after RVC; with
+voice conversion disabled, it translates the original microphone directly.
+Source language detection is automatic.
+
+**Original voice volume** mixes the immediate microphone signal into the RVC
+Virtual Microphone while Gemini's translated speech arrives later. At 0% only
+translated speech is sent. With voice conversion enabled the immediate signal
+is the RVC voice; otherwise it is the physical microphone.
+
+Application translation can capture one currently running PipeWire playback
+stream, translate it independently to English or another target language, and
+play the translated speech through its own selected output device. The
+application's original audio route is not changed, and microphone translation
+can run at the same time using a separate Gemini Live session.
+
+The applet's **Keyboard shortcuts** section controls three independent global
+toggles. By default, microphone translation uses `Alt+T`; voice change and
+application translation have no shortcut until one is assigned.
+
+The API key is stored in the local user configuration with owner-only file
+permissions and is not returned by the daemon's state endpoint. Live Translate
+is a preview service; its output adds network latency and voice replication can
+vary, especially after long pauses or with multiple speakers.
 
 ## Command line
 

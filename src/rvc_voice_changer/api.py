@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import threading
 from http import HTTPStatus
@@ -8,10 +9,11 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .audio import list_audio_devices
-from .config import ConfigStore
+from .config import ConfigStore, TRANSLATION_LANGUAGES
 from .engine import VoiceEngine
 from .logs import RollingLog
 from .models import VoiceModel, discover_models
+from .shortcuts import GlobalShortcutManager
 
 
 class Application:
@@ -20,6 +22,7 @@ class Application:
         self.engine = engine
         self.logs = RollingLog()
         self.engine.set_event_sink(self.logs.append)
+        self.shortcuts = GlobalShortcutManager(self.toggle_shortcut, self.logs.append)
         self._models: list[VoiceModel] = []
         self._lock = threading.RLock()
         self.rescan()
@@ -27,6 +30,7 @@ class Application:
             self.engine.bypass(self.config.data)
         except Exception as error:
             self.engine.fail(error)
+        self.shortcuts.start(self.config.data["shortcuts"])
         self.logs.append("info", "Linux RVC Voice Changer daemon ready")
 
     def rescan(self) -> list[VoiceModel]:
@@ -48,10 +52,18 @@ class Application:
 
     def state(self, include_devices: bool = True) -> dict[str, Any]:
         with self._lock:
+            public_config = copy.deepcopy(self.config.data)
+            translate = public_config["translate"]
+            translate["api_key_set"] = bool(translate["api_key"])
+            translate["api_key"] = ""
             return {
-                "config": self.config.data,
+                "config": public_config,
                 "models_url": self.config.models_dir.resolve().as_uri(),
                 "models": [model.as_dict() for model in self._models],
+                "translation_languages": [
+                    {"id": code, "name": name}
+                    for code, name in TRANSLATION_LANGUAGES
+                ],
                 "devices": list_audio_devices() if include_devices else {},
                 "runtime": self.engine.as_dict(),
             }
@@ -71,10 +83,13 @@ class Application:
 
     def update_config(self, patch: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
-            restart = self.engine.state.enabled and self._requires_restart(patch)
+            needs_restart = self._requires_restart(patch)
+            restart = self.engine.state.enabled and needs_restart
             if restart:
                 self.engine.stop_conversion()
             self.config.update(patch)
+            if "shortcuts" in patch:
+                self.shortcuts.update(self.config.data["shortcuts"])
             changed = ", ".join(sorted(str(key) for key in patch))
             self.logs.append("info", f"Settings updated: {changed}")
             if restart:
@@ -82,14 +97,44 @@ class Application:
                     self.engine.enable(self.selected_model(), self.config.data)
                 except Exception:
                     raise
-            elif not self.engine.state.enabled:
+            elif not self.engine.state.enabled and needs_restart:
                 self.engine.bypass(self.config.data)
             return self.state(include_devices=False)
+
+    def toggle_shortcut(self, setting: str) -> None:
+        if setting == "voice_change":
+            enabled = not self.engine.state.enabled
+            self.set_enabled(enabled)
+            self.logs.append(
+                "info",
+                f"Global shortcut toggled Voice {'on' if enabled else 'off'}",
+            )
+            return
+        if setting == "translation_out":
+            enabled = not bool(self.config.data["translate"]["enabled"])
+            self.update_config({"translate": {"enabled": enabled}})
+            actual = bool(self.config.data["translate"]["enabled"])
+            self.logs.append(
+                "info",
+                f"Global shortcut toggled Mic translate {'on' if actual else 'off'}",
+            )
+            return
+        if setting == "translation_in":
+            enabled = not bool(self.config.data["incoming_translate"]["enabled"])
+            self.update_config({"incoming_translate": {"enabled": enabled}})
+            actual = bool(self.config.data["incoming_translate"]["enabled"])
+            self.logs.append(
+                "info",
+                f"Global shortcut toggled App translate {'on' if actual else 'off'}",
+            )
+            return
+        raise ValueError(f"Unknown shortcut action: {setting}")
 
     def reset_config(self) -> dict[str, Any]:
         with self._lock:
             self.engine.stop_conversion()
             self.config.reset()
+            self.shortcuts.update(self.config.data["shortcuts"])
             self.rescan()
             self.engine.bypass(self.config.data)
             self.logs.append("warning", "Settings reset to shipped defaults")
@@ -99,15 +144,19 @@ class Application:
     def _requires_restart(patch: dict[str, Any]) -> bool:
         audio = set((patch.get("audio") or {}).keys())
         model = set((patch.get("model") or {}).keys())
+        translate = set((patch.get("translate") or {}).keys())
         return bool(
             audio - {"input_gain_db", "output_gain_db", "monitor_gain_db"}
             or model & {"selected", "speaker_id", "f0_method"}
             or patch.get("cleanup")
             or patch.get("gpu")
+            or translate - {"original_voice_volume"}
+            or patch.get("incoming_translate")
             or "models_dir" in patch
         )
 
     def close(self) -> None:
+        self.shortcuts.stop()
         self.engine.shutdown()
 
 
@@ -150,7 +199,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/v1/state":
-            self._send(HTTPStatus.OK, self.app.state())
+            values = parse_qs(parsed.query).get("devices", ["1"])
+            include_devices = values[0].casefold() not in {"0", "false", "no"}
+            self._send(HTTPStatus.OK, self.app.state(include_devices=include_devices))
         elif path == "/v1/health":
             self._send(HTTPStatus.OK, {"ok": True, "runtime": self.app.engine.as_dict()})
         elif path == "/v1/logs":

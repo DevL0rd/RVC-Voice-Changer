@@ -43,5 +43,23 @@
     "device": 0,
     "allow_tf32": true,
     "cpu_threads": 0
+  },
+  "translate": {
+    "enabled": false,
+    "api_key": "",
+    "target_language": "en",
+    "echo_target_language": false,
+    "original_voice_volume": 0.0
+  },
+  "incoming_translate": {
+    "enabled": false,
+    "application": "",
+    "output_device": "",
+    "target_language": "en"
+  },
+  "shortcuts": {
+    "voice_change": "",
+    "translation_out": "Alt+T",
+    "translation_in": ""
   }
 }

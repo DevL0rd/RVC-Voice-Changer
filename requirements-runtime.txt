@@ -12,3 +12,5 @@ local-attention
 noisereduce
 wget
 webrtcvad-wheels
+google-genai>=2.14.0
+dbus-next>=0.2.3

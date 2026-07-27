@@ -7,6 +7,90 @@ from pathlib import Path
 from typing import Any
 
 
+TRANSLATION_LANGUAGES: tuple[tuple[str, str], ...] = (
+    ("af", "Afrikaans"),
+    ("ak", "Akan"),
+    ("sq", "Albanian"),
+    ("am", "Amharic"),
+    ("ar", "Arabic"),
+    ("hy", "Armenian"),
+    ("az", "Azerbaijani"),
+    ("eu", "Basque"),
+    ("be", "Belarusian"),
+    ("bn", "Bengali"),
+    ("bg", "Bulgarian"),
+    ("my", "Burmese (Myanmar)"),
+    ("ca", "Catalan"),
+    ("zh-Hans", "Chinese (Simplified)"),
+    ("zh-Hant", "Chinese (Traditional)"),
+    ("hr", "Croatian"),
+    ("cs", "Czech"),
+    ("da", "Danish"),
+    ("nl", "Dutch"),
+    ("en", "English"),
+    ("et", "Estonian"),
+    ("fil", "Filipino"),
+    ("fi", "Finnish"),
+    ("fr", "French"),
+    ("gl", "Galician"),
+    ("ka", "Georgian"),
+    ("de", "German"),
+    ("el", "Greek"),
+    ("gu", "Gujarati"),
+    ("ha", "Hausa"),
+    ("he", "Hebrew"),
+    ("hi", "Hindi"),
+    ("hu", "Hungarian"),
+    ("is", "Icelandic"),
+    ("id", "Indonesian"),
+    ("it", "Italian"),
+    ("ja", "Japanese"),
+    ("jv", "Javanese"),
+    ("kn", "Kannada"),
+    ("kk", "Kazakh"),
+    ("km", "Khmer"),
+    ("rw", "Kinyarwanda"),
+    ("ko", "Korean"),
+    ("lo", "Lao"),
+    ("lv", "Latvian"),
+    ("lt", "Lithuanian"),
+    ("mk", "Macedonian"),
+    ("ms", "Malay"),
+    ("ml", "Malayalam"),
+    ("mr", "Marathi"),
+    ("mn", "Mongolian"),
+    ("ne", "Nepali"),
+    ("no", "Norwegian"),
+    ("nb", "Norwegian Bokmål"),
+    ("fa", "Persian"),
+    ("pl", "Polish"),
+    ("pt-BR", "Portuguese (Brazil)"),
+    ("pt-PT", "Portuguese (Portugal)"),
+    ("pa", "Punjabi"),
+    ("ro", "Romanian"),
+    ("ru", "Russian"),
+    ("sr", "Serbian"),
+    ("sd", "Sindhi"),
+    ("si", "Sinhala"),
+    ("sk", "Slovak"),
+    ("sl", "Slovenian"),
+    ("es", "Spanish"),
+    ("su", "Sundanese"),
+    ("sw", "Swahili"),
+    ("sv", "Swedish"),
+    ("ta", "Tamil"),
+    ("te", "Telugu"),
+    ("th", "Thai"),
+    ("tr", "Turkish"),
+    ("uk", "Ukrainian"),
+    ("ur", "Urdu"),
+    ("uz", "Uzbek"),
+    ("vi", "Vietnamese"),
+    ("zu", "Zulu"),
+)
+TRANSLATION_LANGUAGE_CODES = frozenset(code for code, _name in TRANSLATION_LANGUAGES)
+
+
 DEFAULT_CONFIG: dict[str, Any] = {
     "server": {"host": "127.0.0.1", "port": 17843},
     "models_dir": "models",
@@ -49,6 +133,24 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "device": 0,
         "allow_tf32": True,
         "cpu_threads": 0,
+    },
+    "translate": {
+        "enabled": False,
+        "api_key": "",
+        "target_language": "en",
+        "echo_target_language": False,
+        "original_voice_volume": 0.0,
+    },
+    "incoming_translate": {
+        "enabled": False,
+        "application": "",
+        "output_device": "",
+        "target_language": "en",
+    },
+    "shortcuts": {
+        "voice_change": "",
+        "translation_out": "Alt+T",
+        "translation_in": "",
     },
 }
 
@@ -98,6 +200,7 @@ class ConfigStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(".tmp")
         temporary.write_text(json.dumps(self.data, indent=2) + "\n", encoding="utf-8")
+        temporary.chmod(0o600)
         temporary.replace(self.path)
 
     @property
@@ -111,6 +214,7 @@ class ConfigStore:
         cleanup = self.data["cleanup"]
         gpu = self.data["gpu"]
         server = self.data["server"]
+        shortcuts = self.data["shortcuts"]
 
         model["speaker_id"] = max(0, int(model["speaker_id"]))
         model["pitch"] = max(-24, min(24, int(model["pitch"])))
@@ -148,3 +252,39 @@ class ConfigStore:
         gpu["cpu_threads"] = max(0, min(256, int(gpu["cpu_threads"])))
         server["host"] = "127.0.0.1"
         server["port"] = max(1024, min(65535, int(server["port"])))
+        translate = self.data.get("translate", {})
+        translate["enabled"] = bool(translate.get("enabled", False))
+        translate["api_key"] = str(translate.get("api_key", "") or "")
+        if not translate["api_key"]:
+            translate["enabled"] = False
+        target_language = str(translate.get("target_language", "en") or "en")
+        translate["target_language"] = (
+            target_language if target_language in TRANSLATION_LANGUAGE_CODES else "en"
+        )
+        translate["echo_target_language"] = bool(
+            translate.get("echo_target_language", False)
+        )
+        translate["original_voice_volume"] = max(
+            0.0,
+            min(1.0, float(translate.get("original_voice_volume", 0.0))),
+        )
+        self.data["translate"] = translate
+
+        incoming = self.data.get("incoming_translate", {})
+        incoming["enabled"] = bool(incoming.get("enabled", False))
+        incoming["application"] = str(incoming.get("application", "") or "")
+        incoming["output_device"] = str(incoming.get("output_device", "") or "")
+        incoming_target = str(incoming.get("target_language", "en") or "en")
+        incoming["target_language"] = (
+            incoming_target if incoming_target in TRANSLATION_LANGUAGE_CODES else "en"
+        )
+        if (
+            not translate["api_key"]
+            or not incoming["application"]
+            or not incoming["output_device"]
+        ):
+            incoming["enabled"] = False
+        self.data["incoming_translate"] = incoming
+
+        for name in ("voice_change", "translation_out", "translation_in"):
+            shortcuts[name] = str(shortcuts.get(name, "") or "").strip()

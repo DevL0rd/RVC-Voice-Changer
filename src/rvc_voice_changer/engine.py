@@ -34,6 +34,12 @@ class RuntimeState:
     profile_ms: dict[str, float] = field(default_factory=dict)
     bottleneck: str = ""
     realtime_factor: float = 0.0
+    translation_status: str = "disabled"
+    translation_error: str = ""
+    translation_latency_ms: float = 0.0
+    incoming_translation_status: str = "disabled"
+    incoming_translation_error: str = ""
+    incoming_translation_latency_ms: float = 0.0
 
 
 class VoiceEngine:
@@ -48,6 +54,12 @@ class VoiceEngine:
         self._capture: subprocess.Popen[bytes] | None = None
         self._playbacks: list[tuple[subprocess.Popen[bytes], str]] = []
         self._converter: Any = None
+        self._translator: Any = None
+        self._incoming_stop_event = threading.Event()
+        self._incoming_thread: threading.Thread | None = None
+        self._incoming_capture: subprocess.Popen[bytes] | None = None
+        self._incoming_playback: subprocess.Popen[bytes] | None = None
+        self._incoming_translator: Any = None
         self._config: dict[str, Any] | None = None
         self._block_frames = 0
         self._event_sink: Callable[[str, str], None] | None = None
@@ -136,7 +148,7 @@ class VoiceEngine:
         input_device = str(config["audio"]["input_device"])
         if not input_device:
             raise RuntimeError("Select an input microphone")
-        for command in ("pw-cat", "pw-loopback"):
+        for command in ("pw-cat", "pw-loopback", "pactl"):
             if not shutil.which(command):
                 raise RuntimeError(f"{command} is required for PipeWire audio")
 
@@ -176,6 +188,8 @@ class VoiceEngine:
             audio_sample_rate=sample_rate,
         )
 
+        self._start_translator(config, sample_rate)
+
         self._stop_event.clear()
         self._capture = self._open_capture(input_device, sample_rate, self._block_frames)
         targets: list[tuple[str, str]] = [(PROCESSING_INPUT_NAME, "output")]
@@ -195,6 +209,7 @@ class VoiceEngine:
             "info",
             f"Conversion started: {model.name} on {self.state.inference_device}",
         )
+        self._start_incoming_translation(config, sample_rate)
 
     def bypass(self, config: dict[str, Any]) -> None:
         """Keep the virtual microphone alive and feed it unconverted input."""
@@ -207,26 +222,49 @@ class VoiceEngine:
             input_device = str(audio.get("input_device") or "")
             self._config = config
             self.state.status = "bypass"
-            if not input_device:
-                return
-            self._require_audio_source(input_device)
-
             sample_rate = int(audio["sample_rate"])
             requested_frames = int(sample_rate * int(audio["block_ms"]) / 1000)
             self._block_frames = max(1, round(requested_frames / 128)) * 128
             self.state.block_ms = self._block_frames * 1000.0 / sample_rate
+            self._start_incoming_translation(config, sample_rate)
+            if not input_device:
+                return
+            self._require_audio_source(input_device)
+
+            self._start_translator(config, sample_rate)
             self._stop_event.clear()
             self._capture = self._open_capture(input_device, sample_rate, self._block_frames)
-            playback = self._open_playback(PROCESSING_INPUT_NAME, sample_rate, self._block_frames)
-            self._playbacks = [(playback, "bypass")]
+            targets: list[tuple[str, str]] = [(PROCESSING_INPUT_NAME, "output")]
+            monitor = (
+                str(audio.get("monitor_device") or "")
+                if audio.get("monitor_enabled") and self._translator is not None
+                else ""
+            )
+            if monitor and monitor != PROCESSING_INPUT_NAME:
+                targets.append((monitor, "monitor"))
+            self._playbacks = [
+                (self._open_playback(target, sample_rate, self._block_frames), role)
+                for target, role in targets
+            ]
             self._thread = threading.Thread(target=self._bypass_loop, name="rvc-bypass", daemon=True)
             self._thread.start()
-            self._event("info", "Bypass active: physical microphone is feeding RVC Virtual Microphone")
+            if self._translator is not None:
+                self._event(
+                    "info",
+                    "Voice conversion bypassed; live translation is using the physical microphone",
+                )
+            else:
+                self._event(
+                    "info",
+                    "Bypass active: physical microphone is feeding RVC Virtual Microphone",
+                )
 
     def _bypass_loop(self) -> None:
         import numpy as np
 
+        assert self._config is not None
         assert self._capture is not None and self._capture.stdout is not None
+        audio_cfg = self._config["audio"]
         byte_count = self._block_frames * 4
         try:
             while not self._stop_event.is_set():
@@ -237,14 +275,60 @@ class VoiceEngine:
                     return
                 if not self._playbacks:
                     raise RuntimeError("RVC Virtual Microphone bypass stream stopped")
-                playback = self._playbacks[0][0]
-                if playback.poll() is not None or playback.stdin is None:
-                    raise RuntimeError("RVC Virtual Microphone bypass stream stopped")
-                playback.stdin.write(raw)
-                playback.stdin.flush()
                 samples = np.frombuffer(raw, dtype=np.float32)
                 rms = math.sqrt(float(np.square(samples, dtype=np.float64).mean()))
                 self.state.input_level_db = round(20.0 * math.log10(max(rms, 1e-5)), 1)
+                output = samples
+                if self._translator is not None:
+                    translated_input = samples.copy()
+                    translated_input *= 10.0 ** (
+                        float(audio_cfg["input_gain_db"]) / 20.0
+                    )
+                    np.clip(translated_input, -1.0, 1.0, out=translated_input)
+                    self._translator.send(translated_input)
+                    translated = self._translator.read(len(samples))
+                    output = self._mix_translated_audio(
+                        translated_input,
+                        translated,
+                        float(
+                            self._config["translate"].get(
+                                "original_voice_volume",
+                                0.0,
+                            )
+                        ),
+                    )
+                    self.state.translation_latency_ms = round(
+                        float(self._translator.latency_ms), 1
+                    )
+
+                payloads: dict[str, bytes] = {}
+                alive: list[tuple[subprocess.Popen[bytes], str]] = []
+                for playback, role in self._playbacks:
+                    if playback.poll() is not None or playback.stdin is None:
+                        self.state.dropped_blocks += 1
+                        continue
+                    if self._translator is None and role == "output":
+                        payload = raw
+                    else:
+                        if role not in payloads:
+                            gain_key = (
+                                "monitor_gain_db" if role == "monitor" else "output_gain_db"
+                            )
+                            gained = output * (
+                                10.0 ** (float(audio_cfg[gain_key]) / 20.0)
+                            )
+                            payloads[role] = (
+                                np.clip(gained, -1.0, 1.0)
+                                .astype(np.float32, copy=False)
+                                .tobytes()
+                            )
+                        payload = payloads[role]
+                    playback.stdin.write(payload)
+                    playback.stdin.flush()
+                    alive.append((playback, role))
+                self._playbacks = alive
+                if not self._playbacks:
+                    raise RuntimeError("Every PipeWire bypass output stream stopped")
         except Exception as error:
             if not self._stop_event.is_set():
                 self.state.status = "error"
@@ -253,8 +337,14 @@ class VoiceEngine:
                 self._stop_processes()
                 self._event("error", f"Bypass stream failed: {error}")
 
-    def _pw_cat_command(self, mode: str, target: str, sample_rate: int, block_frames: int) -> list[str]:
-        node_name = "rvc_capture_stream" if mode == "record" else "rvc_output_stream"
+    def _pw_cat_command(
+        self,
+        mode: str,
+        target: str,
+        sample_rate: int,
+        block_frames: int,
+        node_name: str,
+    ) -> list[str]:
         return [
             "pw-cat",
             f"--{mode}",
@@ -283,15 +373,21 @@ class VoiceEngine:
             "-",
         ]
 
-    def _open_capture(self, target: str, sample_rate: int, block_frames: int) -> subprocess.Popen[bytes]:
+    def _open_capture(
+        self,
+        target: str,
+        sample_rate: int,
+        block_frames: int,
+        node_name: str = "rvc_capture_stream",
+    ) -> subprocess.Popen[bytes]:
         process = subprocess.Popen(
-            self._pw_cat_command("record", target, sample_rate, block_frames),
+            self._pw_cat_command("record", target, sample_rate, block_frames, node_name),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         self._confirm_started(process, f"input {target}")
         try:
-            self._confirm_capture_link(process, target)
+            self._confirm_capture_link(process, target, node_name)
         except Exception:
             if process.poll() is None:
                 process.terminate()
@@ -307,9 +403,15 @@ class VoiceEngine:
             raise
         return process
 
-    def _open_playback(self, target: str, sample_rate: int, block_frames: int) -> subprocess.Popen[bytes]:
+    def _open_playback(
+        self,
+        target: str,
+        sample_rate: int,
+        block_frames: int,
+        node_name: str = "rvc_output_stream",
+    ) -> subprocess.Popen[bytes]:
         process = subprocess.Popen(
-            self._pw_cat_command("playback", target, sample_rate, block_frames),
+            self._pw_cat_command("playback", target, sample_rate, block_frames, node_name),
             stdin=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -390,6 +492,23 @@ class VoiceEngine:
                     proposed_pitch=bool(model.get("proposed_pitch", False)),
                     proposed_pitch_threshold=float(model.get("proposed_pitch_threshold", 255.0)),
                 )
+                if self._translator is not None:
+                    original = converted
+                    self._translator.send(original)
+                    translated = self._translator.read(len(original))
+                    converted = self._mix_translated_audio(
+                        original,
+                        translated,
+                        float(
+                            config["translate"].get(
+                                "original_voice_volume",
+                                0.0,
+                            )
+                        ),
+                    )
+                    self.state.translation_latency_ms = round(
+                        float(self._translator.latency_ms), 1
+                    )
                 inference_ms = (time.perf_counter() - inference_started) * 1000.0
                 payloads: dict[str, bytes] = {}
                 alive: list[tuple[subprocess.Popen[bytes], str]] = []
@@ -488,6 +607,8 @@ class VoiceEngine:
     def _prepare_cable(self) -> None:
         self.cable.start()
         self._wait_for_node(PROCESSING_INPUT_NAME)
+        self._wait_for_node(VIRTUAL_MICROPHONE_NAME)
+        self._unmute_virtual_microphone()
         self.state.virtual_microphone = True
         repaired = self._repair_virtual_microphone_consumers()
         if repaired:
@@ -496,6 +617,22 @@ class VoiceEngine:
                 "warning",
                 f"Reconnected {repaired} application {noun} to RVC Virtual Microphone",
             )
+
+    @staticmethod
+    def _unmute_virtual_microphone() -> None:
+        """Clear a mute state restored by PipeWire-Pulse for the stable source name."""
+        pactl = shutil.which("pactl")
+        if not pactl:
+            raise RuntimeError("pactl is required to initialize RVC Virtual Microphone")
+        try:
+            subprocess.run(
+                [pactl, "set-source-mute", VIRTUAL_MICROPHONE_NAME, "0"],
+                check=True,
+                capture_output=True,
+                timeout=3,
+            )
+        except subprocess.SubprocessError as error:
+            raise RuntimeError("Could not unmute RVC Virtual Microphone") from error
 
     @staticmethod
     def _repair_virtual_microphone_consumers() -> int:
@@ -580,37 +717,191 @@ class VoiceEngine:
         )
 
     @classmethod
-    def _confirm_capture_link(cls, process: subprocess.Popen[bytes], target: str) -> None:
+    def _require_application_stream(cls, target: str) -> None:
+        for item in cls._pipewire_objects():
+            if item.get("type") != "PipeWire:Interface:Node":
+                continue
+            props = (item.get("info") or {}).get("props") or {}
+            if str(item.get("id")) != target and str(props.get("node.name") or "") != target:
+                continue
+            if props.get("media.class") == "Stream/Output/Audio":
+                return
+        raise RuntimeError(
+            "The selected application audio stream is no longer running; select it again"
+        )
+
+    @classmethod
+    def _confirm_capture_link(
+        cls,
+        process: subprocess.Popen[bytes],
+        target: str,
+        capture_node_name: str,
+    ) -> None:
         deadline = time.monotonic() + 1.0
         while time.monotonic() < deadline:
             objects = cls._pipewire_objects()
-            nodes = {
-                str((item.get("info") or {}).get("props", {}).get("node.name") or ""): item.get("id")
+            nodes = [
+                item
                 for item in objects
                 if item.get("type") == "PipeWire:Interface:Node"
+            ]
+            target_ids = {
+                item.get("id")
+                for item in nodes
+                if str(item.get("id")) == target
+                or str(
+                    (item.get("info") or {}).get("props", {}).get("node.name")
+                    or ""
+                )
+                == target
             }
-            target_id = nodes.get(target)
-            capture_id = nodes.get("rvc_capture_stream")
+            capture_id = next(
+                (
+                    item.get("id")
+                    for item in nodes
+                    if (item.get("info") or {}).get("props", {}).get("node.name")
+                    == capture_node_name
+                ),
+                None,
+            )
             linked = any(
                 item.get("type") == "PipeWire:Interface:Link"
-                and (item.get("info") or {}).get("output-node-id") == target_id
+                and (item.get("info") or {}).get("output-node-id") in target_ids
                 and (item.get("info") or {}).get("input-node-id") == capture_id
                 for item in objects
             )
-            if target_id is not None and capture_id is not None and linked:
+            if target_ids and capture_id is not None and linked:
                 return
             if process.poll() is not None:
                 break
             time.sleep(0.05)
-        raise RuntimeError(f"PipeWire did not connect the selected input microphone '{target}'")
+        raise RuntimeError(f"PipeWire did not connect audio target '{target}'")
+
+    def _start_incoming_translation(
+        self,
+        config: dict[str, Any],
+        sample_rate: int,
+    ) -> None:
+        settings = config.get("incoming_translate", {})
+        if not bool(settings.get("enabled", False)):
+            return
+
+        application = str(settings.get("application", "") or "")
+        output_device = str(settings.get("output_device", "") or "")
+        api_key = str(config.get("translate", {}).get("api_key", "") or "")
+        try:
+            if not api_key:
+                raise RuntimeError("Save a Gemini API key before translating application audio")
+            if not application:
+                raise RuntimeError("Select a running application to translate")
+            if not output_device:
+                raise RuntimeError("Select an output device for application translation")
+            self._require_application_stream(application)
+
+            from rvc.realtime.gemini_translate import GeminiLiveTranslator
+
+            block_frames = max(128, round(sample_rate * 0.1 / 128) * 128)
+            self._incoming_translator = GeminiLiveTranslator(
+                api_key=api_key,
+                target_language=str(settings.get("target_language", "en") or "en"),
+                echo_target_language=False,
+                sample_rate=sample_rate,
+                status_callback=self._set_incoming_translation_status,
+            )
+            self._incoming_translator.start()
+            self._incoming_stop_event.clear()
+            self._incoming_capture = self._open_capture(
+                application,
+                sample_rate,
+                block_frames,
+                node_name="rvc_application_capture_stream",
+            )
+            self._incoming_playback = self._open_playback(
+                output_device,
+                sample_rate,
+                block_frames,
+                node_name="rvc_application_translation_output",
+            )
+            self._incoming_thread = threading.Thread(
+                target=self._incoming_translation_loop,
+                args=(block_frames,),
+                name="rvc-application-translate",
+                daemon=True,
+            )
+            self._incoming_thread.start()
+            self._event("info", "Application audio translation started")
+        except Exception as error:
+            self._stop_incoming_processes()
+            if self._incoming_translator is not None:
+                self._incoming_translator.stop()
+                self._incoming_translator = None
+            self._set_incoming_translation_status("error", str(error))
+
+    def _incoming_translation_loop(self, block_frames: int) -> None:
+        import numpy as np
+
+        assert self._incoming_capture is not None
+        assert self._incoming_capture.stdout is not None
+        assert self._incoming_playback is not None
+        assert self._incoming_playback.stdin is not None
+        byte_count = block_frames * 4
+        silence = np.zeros(block_frames, dtype=np.float32)
+        try:
+            while not self._incoming_stop_event.is_set():
+                raw = self._read_exact(self._incoming_capture.stdout, byte_count)
+                if len(raw) != byte_count:
+                    if not self._incoming_stop_event.is_set():
+                        raise RuntimeError("Selected application audio stream stopped")
+                    return
+                if (
+                    self._incoming_playback.poll() is not None
+                    or self._incoming_playback.stdin is None
+                ):
+                    raise RuntimeError("Application translation output device stopped")
+                samples = np.frombuffer(raw, dtype=np.float32)
+                self._incoming_translator.send(samples)
+                translated = self._incoming_translator.read(block_frames)
+                output = silence if translated is None else translated
+                self.state.incoming_translation_latency_ms = round(
+                    float(self._incoming_translator.latency_ms), 1
+                )
+                payload = (
+                    np.clip(output, -1.0, 1.0)
+                    .astype(np.float32, copy=False)
+                    .tobytes()
+                )
+                self._incoming_playback.stdin.write(payload)
+                self._incoming_playback.stdin.flush()
+        except Exception as error:
+            if not self._incoming_stop_event.is_set():
+                self._incoming_stop_event.set()
+                self._stop_incoming_processes()
+                if self._incoming_translator is not None:
+                    self._incoming_translator.stop()
+                    self._incoming_translator = None
+                self._set_incoming_translation_status("error", str(error))
 
     def _deactivate(self, keep_cable: bool) -> None:
         with self._lock:
             self._stop_event.set()
+            self._incoming_stop_event.set()
             thread, self._thread = self._thread, None
             if thread and thread is not threading.current_thread():
                 thread.join(timeout=3)
+            incoming_thread, self._incoming_thread = self._incoming_thread, None
+            if (
+                incoming_thread
+                and incoming_thread is not threading.current_thread()
+            ):
+                incoming_thread.join(timeout=3)
             self._stop_processes()
+            self._stop_incoming_processes()
+            if self._translator is not None:
+                self._translator.stop()
+                self._translator = None
+            if self._incoming_translator is not None:
+                self._incoming_translator.stop()
+                self._incoming_translator = None
             self._converter = None
             self._config = None
             if not keep_cable:
@@ -631,6 +922,64 @@ class VoiceEngine:
             self.state.profile_ms = {}
             self.state.bottleneck = ""
             self.state.realtime_factor = 0.0
+            self.state.translation_status = "disabled"
+            self.state.translation_error = ""
+            self.state.translation_latency_ms = 0.0
+            self.state.incoming_translation_status = "disabled"
+            self.state.incoming_translation_error = ""
+            self.state.incoming_translation_latency_ms = 0.0
+
+    def _set_translation_status(self, status: str, error: str) -> None:
+        self.state.translation_status = status
+        self.state.translation_error = error
+        if status == "running":
+            self._event("info", "Gemini live translation connected")
+        elif status == "error":
+            self._event(
+                "warning",
+                f"Gemini live translation failed: {error}",
+            )
+
+    @staticmethod
+    def _mix_translated_audio(
+        original: Any,
+        translated: Any | None,
+        original_voice_volume: float,
+    ) -> Any:
+        """Mix immediate source speech with asynchronous translated speech."""
+        import numpy as np
+
+        volume = max(0.0, min(1.0, float(original_voice_volume)))
+        mixed = np.asarray(original, dtype=np.float32) * volume
+        if translated is not None:
+            mixed = mixed + np.asarray(translated, dtype=np.float32)
+        return mixed.astype(np.float32, copy=False)
+
+    def _set_incoming_translation_status(self, status: str, error: str) -> None:
+        self.state.incoming_translation_status = status
+        self.state.incoming_translation_error = error
+        if status in {"disabled", "error"}:
+            self.state.incoming_translation_latency_ms = 0.0
+        if status == "running":
+            self._event("info", "Gemini application translation connected")
+        elif status == "error":
+            self._event("warning", f"Application audio translation failed: {error}")
+
+    def _start_translator(self, config: dict[str, Any], sample_rate: int) -> None:
+        translate = config.get("translate", {})
+        if not bool(translate.get("enabled", False)):
+            return
+
+        from rvc.realtime.gemini_translate import GeminiLiveTranslator
+
+        self._translator = GeminiLiveTranslator(
+            api_key=str(translate.get("api_key", "") or ""),
+            target_language=str(translate.get("target_language", "en") or "en"),
+            echo_target_language=bool(translate.get("echo_target_language", False)),
+            sample_rate=sample_rate,
+            status_callback=self._set_translation_status,
+        )
+        self._translator.start()
 
     def stop_conversion(self) -> None:
         self._deactivate(keep_cable=True)
@@ -642,6 +991,30 @@ class VoiceEngine:
         processes = ([self._capture] if self._capture else []) + [process for process, _role in self._playbacks]
         self._capture = None
         self._playbacks = []
+        for process in processes:
+            if process and process.stdin:
+                with suppress(BrokenPipeError, OSError, ValueError):
+                    process.stdin.close()
+        for process in processes:
+            if process and process.poll() is None:
+                process.terminate()
+        for process in processes:
+            if not process:
+                continue
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=1)
+            for stream in (process.stdout, process.stderr):
+                if stream:
+                    with suppress(OSError, ValueError):
+                        stream.close()
+
+    def _stop_incoming_processes(self) -> None:
+        processes = [self._incoming_capture, self._incoming_playback]
+        self._incoming_capture = None
+        self._incoming_playback = None
         for process in processes:
             if process and process.stdin:
                 with suppress(BrokenPipeError, OSError, ValueError):
