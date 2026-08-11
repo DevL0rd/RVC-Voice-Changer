@@ -156,3 +156,5 @@ echo
 echo "Installed. Add 'RVC Voice Changer' from Plasma's Add Widgets menu."
 echo "Voice folders: $REPO_DIR/models/"
 echo "Logs: journalctl --user -u linux-rvc-voice-changer.service -f"
+echo "Restarting Plasma..."
+systemctl --user restart plasma-plasmashell.service
