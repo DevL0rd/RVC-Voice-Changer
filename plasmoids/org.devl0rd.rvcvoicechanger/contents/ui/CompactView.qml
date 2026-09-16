@@ -12,7 +12,8 @@ MouseArea {
     readonly property real thickness: vertical ? width : height
     readonly property bool showLatency: Plasmoid.configuration.compactShowLatency
     readonly property bool showPipelines: Plasmoid.configuration.compactShowPipelines
-    readonly property real iconSize: Math.round(Math.min(Kirigami.Units.iconSizes.medium, thickness * 0.62))
+    readonly property bool iconOnly: !showLatency && !showPipelines
+    readonly property real iconSize: iconOnly ? Kirigami.Units.iconSizes.smallMedium : Math.round(Math.min(Kirigami.Units.iconSizes.medium, thickness * 0.62))
     property bool wasExpanded: false
 
     acceptedButtons: Qt.LeftButton | Qt.MiddleButton
@@ -25,10 +26,12 @@ MouseArea {
             root.expanded = !wasExpanded
     }
 
-    Layout.minimumWidth: vertical ? 0 : grid.implicitWidth + Kirigami.Units.smallSpacing * 2
+    Layout.minimumWidth: vertical ? 0 : iconOnly ? height : grid.implicitWidth + Kirigami.Units.smallSpacing * 2
     Layout.preferredWidth: Layout.minimumWidth
-    Layout.minimumHeight: vertical ? grid.implicitHeight + Kirigami.Units.smallSpacing * 2 : 0
+    Layout.maximumWidth: vertical ? Infinity : Layout.minimumWidth
+    Layout.minimumHeight: vertical ? (iconOnly ? width : grid.implicitHeight + Kirigami.Units.smallSpacing * 2) : 0
     Layout.preferredHeight: Layout.minimumHeight
+    Layout.maximumHeight: vertical ? Layout.minimumHeight : Infinity
 
     component Light: Rectangle {
         required property bool active
@@ -37,15 +40,14 @@ MouseArea {
         height: width
         radius: width / 2
         color: active ? accent : Qt.alpha(Kirigami.Theme.textColor, 0.18)
-        Behavior on color { ColorAnimation { duration: 220 } }
     }
 
     Rectangle {
+        visible: !compact.iconOnly
         anchors.fill: parent
         anchors.margins: 1
         radius: Kirigami.Units.cornerRadius
         color: Qt.alpha(Kirigami.Theme.textColor, compact.containsMouse || root.expanded ? 0.08 : 0)
-        Behavior on color { ColorAnimation { duration: 150 } }
     }
 
     GridLayout {
@@ -65,11 +67,10 @@ MouseArea {
                 Layout.preferredHeight: compact.iconSize
                 Kirigami.Icon {
                     anchors.fill: parent
-                    source: root.voiceOn ? "microphone-sensitivity-high" : "audio-input-microphone"
-                    color: !root.reachable || root.failed ? Kirigami.Theme.negativeTextColor
-                         : root.voiceOn ? root.voiceAccent : Kirigami.Theme.textColor
+                    source: root.voiceOn ? "microphone-sensitivity-high" : "microphone-sensitivity-muted"
+                    fallback: "audio-input-microphone-symbolic"
+                    active: compact.containsMouse
                     opacity: root.reachable ? 1 : 0.55
-                    isMask: true
                 }
             }
             Row {

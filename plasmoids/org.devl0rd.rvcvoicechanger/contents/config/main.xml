@@ -4,8 +4,8 @@
       xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
     <kcfgfile name=""/>
     <group name="General">
-        <entry name="compactShowLatency" type="Bool"><default>true</default></entry>
-        <entry name="compactShowPipelines" type="Bool"><default>true</default></entry>
+        <entry name="compactShowLatency" type="Bool"><default>false</default></entry>
+        <entry name="compactShowPipelines" type="Bool"><default>false</default></entry>
         <entry name="middleClickToggle" type="Bool"><default>true</default></entry>
         <entry name="rememberTab" type="Bool"><default>true</default></entry>
         <entry name="defaultTab" type="String"><default>main</default></entry>
