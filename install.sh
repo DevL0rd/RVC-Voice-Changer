@@ -27,9 +27,11 @@ fi
 
 chmod +x "$REPO_DIR/bin/rvc-voice-changer" "$REPO_DIR/bin/rvc-voice-changer-ctl"
 
-echo "Creating the isolated RVC runtime..."
-python3 -m venv "$REPO_DIR/.venv"
-"$REPO_DIR/.venv/bin/python" -m pip install --upgrade pip setuptools wheel
+if [[ ! -x "$REPO_DIR/.venv/bin/python" ]]; then
+    echo "Creating the isolated RVC runtime..."
+    python3 -m venv "$REPO_DIR/.venv"
+    "$REPO_DIR/.venv/bin/python" -m pip install --upgrade pip setuptools wheel
+fi
 
 TORCH_BACKEND=${RVC_TORCH_BACKEND:-auto}
 TORCH_INDEX_URL=${RVC_TORCH_INDEX_URL:-}
@@ -53,6 +55,28 @@ elif [[ "$TORCH_BACKEND" == auto ]]; then
     fi
 fi
 
+torch_matches() {
+    "$REPO_DIR/.venv/bin/python" - "$1" <<'PY' >/dev/null 2>&1
+import sys
+import torch
+import torchaudio
+backend = sys.argv[1]
+pinned = torch.__version__.split("+")[0] == "2.11.0"
+if backend == "cuda":
+    ok = pinned and torch.version.cuda is not None
+elif backend == "cpu":
+    ok = pinned and torch.version.cuda is None and not getattr(torch.version, "hip", None)
+elif backend == "rocm":
+    ok = bool(getattr(torch.version, "hip", None))
+else:
+    ok = False
+sys.exit(0 if ok else 1)
+PY
+}
+
+if torch_matches "$TORCH_BACKEND"; then
+    echo "PyTorch for $TORCH_BACKEND is already installed."
+else
 case "$TORCH_BACKEND" in
     cuda)
         echo "Installing NVIDIA CUDA PyTorch..."
@@ -81,6 +105,7 @@ case "$TORCH_BACKEND" in
         exit 1
         ;;
 esac
+fi
 
 if [[ "$TORCH_BACKEND" == rocm ]] && ! "$REPO_DIR/.venv/bin/python" - <<'PY'
 import sys
@@ -90,10 +115,12 @@ PY
 then
     if (( TORCH_BACKEND_WAS_AUTO )); then
         echo "The AMD GPU is not usable through ROCm; falling back to CPU-only PyTorch."
-        "$REPO_DIR/.venv/bin/python" -m pip install --upgrade --force-reinstall \
-            --index-url https://download.pytorch.org/whl/cpu \
-            "torch==2.11.0" "torchaudio==2.11.0"
         TORCH_BACKEND=cpu
+        if ! torch_matches cpu; then
+            "$REPO_DIR/.venv/bin/python" -m pip install --upgrade --force-reinstall \
+                --index-url https://download.pytorch.org/whl/cpu \
+                "torch==2.11.0" "torchaudio==2.11.0"
+        fi
     else
         echo "ROCm was requested, but PyTorch cannot use an AMD GPU on this machine."
         exit 1
@@ -134,13 +161,30 @@ if [[ ! -f "$CONFIG_DIR/config.json" ]]; then
     echo "Created $CONFIG_DIR/config.json"
 fi
 
-sed "s|@REPO_DIR@|$REPO_DIR|g" \
-    "$REPO_DIR/systemd/linux-rvc-voice-changer.service.in" \
-    > "$USER_UNIT_DIR/linux-rvc-voice-changer.service"
-systemctl --user daemon-reload
-systemctl --user enable linux-rvc-voice-changer.service
-systemctl --user restart linux-rvc-voice-changer.service
-echo "Enabled linux-rvc-voice-changer.service"
+UNIT="$USER_UNIT_DIR/linux-rvc-voice-changer.service"
+STAMP="$CONFIG_DIR/installed-revision"
+NEW_UNIT=$(sed "s|@REPO_DIR@|$REPO_DIR|g" "$REPO_DIR/systemd/linux-rvc-voice-changer.service.in")
+REVISION=$( { printf '%s\n' "$NEW_UNIT"; find "$REPO_DIR/src" "$REPO_DIR/bin" "$REPO_DIR/requirements-runtime.txt" -type f -not -path '*/__pycache__/*' -print0 | sort -z | xargs -0 sha256sum; } | sha256sum | cut -d' ' -f1)
+RESTART=0
+if [[ ! -f "$UNIT" ]] || [[ "$(<"$UNIT")" != "$NEW_UNIT" ]]; then
+    printf '%s\n' "$NEW_UNIT" > "$UNIT"
+    systemctl --user daemon-reload
+    RESTART=1
+fi
+if [[ ! -f "$STAMP" ]] || [[ "$(<"$STAMP")" != "$REVISION" ]]; then
+    RESTART=1
+fi
+systemctl --user enable linux-rvc-voice-changer.service >/dev/null 2>&1
+if (( RESTART )); then
+    systemctl --user restart linux-rvc-voice-changer.service
+    echo "Restarted linux-rvc-voice-changer.service"
+elif ! systemctl --user is-active --quiet linux-rvc-voice-changer.service; then
+    systemctl --user start linux-rvc-voice-changer.service
+    echo "Started linux-rvc-voice-changer.service"
+else
+    echo "linux-rvc-voice-changer.service is up to date"
+fi
+printf '%s\n' "$REVISION" > "$STAMP"
 
 mkdir -p "$PLASMOID/contents/ui/lib"
 cp "$REPO_DIR/shared/common/"*.qml "$REPO_DIR/shared/common/"*.js "$PLASMOID/contents/ui/lib/"
