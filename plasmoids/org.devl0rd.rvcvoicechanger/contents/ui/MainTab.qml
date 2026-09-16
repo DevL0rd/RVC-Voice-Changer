@@ -126,8 +126,8 @@ ColumnLayout {
                 PlasmaComponents.ToolButton {
                     text: i18n("Open folder")
                     icon.name: "folder-open"
-                    enabled: !!root.snapshot.models_url
-                    onClicked: Qt.openUrlExternally(root.snapshot.models_url)
+                    enabled: !!root.modelsUrl
+                    onClicked: Qt.openUrlExternally(root.modelsUrl)
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.delay: 450
                     QQC2.ToolTip.text: root.formatTooltip(i18n("Opens the models directory in the file manager. Put each voice in its own subfolder with one .pth model and an optional .index retrieval file. Files placed here are local and are not added to Git."))

@@ -108,8 +108,8 @@ Item {
                     icon.name: "folder-open"
                     display: PlasmaComponents.AbstractButton.IconOnly
                     text: i18n("Open voice models folder")
-                    enabled: !!root.snapshot.models_url
-                    onClicked: Qt.openUrlExternally(root.snapshot.models_url)
+                    enabled: !!root.modelsUrl
+                    onClicked: Qt.openUrlExternally(root.modelsUrl)
                     QQC2.ToolTip.visible: hovered
                     QQC2.ToolTip.text: text
                 },

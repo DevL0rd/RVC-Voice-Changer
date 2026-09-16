@@ -10,7 +10,13 @@ PlasmoidItem {
     id: root
 
     readonly property string api: "http://127.0.0.1:17843/v1"
-    property var snapshot: ({ config: {}, models: [], devices: {}, runtime: {} })
+    property var cfg: ({})
+    property var voices: []
+    property var devices: ({})
+    property var runtime: ({})
+    property var translationLanguages: []
+    property string modelsUrl: ""
+    property var stamps: ({})
     property bool reachable: false
     property bool loaded: false
     property string requestError: ""
@@ -24,7 +30,6 @@ PlasmoidItem {
     onTabKeyChanged: Plasmoid.configuration.currentTab = tabKey
     readonly property var collapsedCards: Plasmoid.configuration.collapsedCards.split(",").filter(name => name !== "")
 
-    readonly property var cfg: snapshot.config || ({})
     readonly property var audio: cfg.audio || ({})
     readonly property var modelSettings: cfg.model || ({})
     readonly property var cleanup: cfg.cleanup || ({})
@@ -32,14 +37,11 @@ PlasmoidItem {
     readonly property var translate: cfg.translate || ({})
     readonly property var incomingTranslate: cfg.incoming_translate || ({})
     readonly property var shortcuts: cfg.shortcuts || ({})
-    readonly property var runtime: snapshot.runtime || ({})
     readonly property var profile: runtime.profile_ms || ({})
-    readonly property var voices: snapshot.models || []
-    readonly property var inputs: (snapshot.devices || {}).inputs || []
-    readonly property var monitors: (snapshot.devices || {}).monitors || []
-    readonly property var outputs: (snapshot.devices || {}).outputs || []
-    readonly property var applications: (snapshot.devices || {}).applications || []
-    readonly property var translationLanguages: snapshot.translation_languages || []
+    readonly property var inputs: devices.inputs || []
+    readonly property var monitors: devices.monitors || []
+    readonly property var outputs: devices.outputs || []
+    readonly property var applications: devices.applications || []
 
     readonly property color voiceAccent: Kirigami.Theme.positiveTextColor
     readonly property color translateAccent: Kirigami.Theme.linkColor
@@ -76,7 +78,9 @@ PlasmoidItem {
     ]
 
     readonly property bool inPanel: Plasmoid.formFactor === PlasmaCore.Types.Horizontal || Plasmoid.formFactor === PlasmaCore.Types.Vertical
-    readonly property bool shown: !inPanel || expanded
+    readonly property bool dataWanted: inPanel || visible
+    readonly property bool shown: inPanel ? expanded : visible
+    onShownChanged: if (shown) refresh()
     property bool popupAlive: !inPanel
     preferredRepresentation: inPanel ? compactRepresentation : fullRepresentation
     onExpandedChanged: function() {
@@ -85,7 +89,6 @@ PlasmoidItem {
                 tabKey = Plasmoid.configuration.defaultTab
             releasePopup.stop()
             popupAlive = true
-            refresh()
         } else if (inPanel) {
             releasePopup.restart()
         }
@@ -111,6 +114,7 @@ PlasmoidItem {
             let data = ({})
             try { data = JSON.parse(xhr.responseText || "{}") } catch (error) {}
             if (xhr.status === 0) {
+                refreshing = false
                 reachable = false
                 requestError = i18n("Daemon is unavailable")
                 return
@@ -118,28 +122,40 @@ PlasmoidItem {
             reachable = true
             if (xhr.status >= 200 && xhr.status < 300) {
                 requestError = ""
-                if (data.config) {
-                    if (!data.devices || Object.keys(data.devices).length === 0)
-                        data.devices = snapshot.devices
-                    snapshot = data
-                    loaded = true
-                }
+                if (data.config)
+                    applyState(data)
                 if (done)
                     done(data)
             } else {
+                refreshing = false
                 requestError = data.error || i18n("Daemon is unavailable")
-                if (data.runtime) {
-                    const next = snapshot
-                    next.runtime = data.runtime
-                    snapshot = next
-                }
+                if (data.runtime)
+                    take("runtime", data.runtime)
             }
         }
         xhr.send(payload === undefined ? null : JSON.stringify(payload))
     }
 
+    function take(key, value) {
+        const text = JSON.stringify(value)
+        if (stamps[key] === text)
+            return
+        stamps[key] = text
+        root[key] = value
+    }
+    function applyState(data) {
+        take("cfg", data.config)
+        take("voices", data.models || [])
+        if (data.devices && Object.keys(data.devices).length > 0)
+            take("devices", data.devices)
+        take("runtime", data.runtime || {})
+        take("translationLanguages", data.translation_languages || [])
+        take("modelsUrl", data.models_url || "")
+        loaded = true
+    }
+
     function recordHistory() {
-        if (!popupAlive)
+        if (!popupAlive || !shown)
             return
         History.push(history, "latency", voiceOn ? Number(runtime.latency_ms || 0) : 0)
         History.push(history, "load", voiceOn ? Number(runtime.realtime_factor || 0) * 100 : 0)
@@ -151,7 +167,13 @@ PlasmoidItem {
         return History.values(history, key)
     }
 
-    function refresh() { request("GET", "/state", undefined, null) }
+    property bool refreshing: false
+    function refresh() {
+        if (refreshing)
+            return
+        refreshing = true
+        request("GET", "/state", undefined, function() { refreshing = false })
+    }
     function refreshSummary() { request("GET", "/state?devices=0", undefined, recordHistory) }
     function refreshLogs() {
         request("GET", "/logs?after=" + latestLogId, undefined, function(data) {
@@ -260,7 +282,7 @@ PlasmoidItem {
     Component.onCompleted: refresh()
     Timer {
         interval: 1000
-        running: true
+        running: root.dataWanted
         repeat: true
         onTriggered: root.refreshSummary()
     }
