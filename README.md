@@ -31,7 +31,7 @@ microphone.
 ## Install
 
 ```bash
-git clone https://github.com/DevL0rd/Linux-RVC-Voice-Changer.git
+git clone --recursive https://github.com/DevL0rd/Linux-RVC-Voice-Changer.git
 cd Linux-RVC-Voice-Changer
 ./install.sh
 ```

@@ -19,6 +19,12 @@ if (( missing )); then
     exit 1
 fi
 
+if [[ ! -e "$REPO_DIR/shared/common/PopupShell.qml" ]]; then
+    echo "shared/common (Linux-Plasma-Shared submodule) is empty."
+    echo "Run: git submodule update --init --recursive"
+    exit 1
+fi
+
 chmod +x "$REPO_DIR/bin/rvc-voice-changer" "$REPO_DIR/bin/rvc-voice-changer-ctl"
 
 echo "Creating the isolated RVC runtime..."
@@ -136,6 +142,8 @@ systemctl --user enable linux-rvc-voice-changer.service
 systemctl --user restart linux-rvc-voice-changer.service
 echo "Enabled linux-rvc-voice-changer.service"
 
+mkdir -p "$PLASMOID/contents/ui/lib"
+cp "$REPO_DIR/shared/common/"*.qml "$REPO_DIR/shared/common/"*.js "$PLASMOID/contents/ui/lib/"
 if kpackagetool6 -t Plasma/Applet -u "$PLASMOID" >/dev/null 2>&1; then
     echo "Upgraded RVC Voice Changer Plasma applet"
 else
