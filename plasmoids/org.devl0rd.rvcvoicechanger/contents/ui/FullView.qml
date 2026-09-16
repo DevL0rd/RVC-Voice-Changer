@@ -22,6 +22,13 @@ Item {
         { key: "system", label: i18n("System"), icon: "preferences-system" }
     ]
 
+    component TabLoader: Loader {
+        required property string key
+        Layout.fillWidth: true
+        active: root.query !== "" || root.tabKey === key
+        visible: item !== null && (root.query === "" || Array.from(item.children).some(child => child.isSection === true && child.available && child.anyMatch))
+    }
+
     Loader {
         id: loader
         anchors.fill: parent
@@ -234,10 +241,10 @@ Item {
                         Component.onCompleted: root.menuFlickable = contentItem
                         Component.onDestruction: if (root.menuFlickable === contentItem) root.menuFlickable = null
 
-                        MainTab {}
-                        TranslateTab {}
-                        TuningTab {}
-                        SystemTab {}
+                        TabLoader { key: "main"; sourceComponent: MainTab {} }
+                        TabLoader { key: "translate"; sourceComponent: TranslateTab {} }
+                        TabLoader { key: "tuning"; sourceComponent: TuningTab {} }
+                        TabLoader { key: "system"; sourceComponent: SystemTab {} }
                         Item { Layout.preferredHeight: 1 }
                     }
 
