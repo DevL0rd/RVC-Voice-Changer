@@ -26,7 +26,7 @@ for argument in "$@"; do
 done
 
 missing=0
-for command_name in python3 pw-dump pw-loopback pw-cat pactl kpackagetool6 curl; do
+for command_name in python3 pw-dump pw-loopback pw-link pw-cat pactl kpackagetool6 curl; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         echo "Missing required command: $command_name"
         missing=1

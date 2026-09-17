@@ -172,9 +172,9 @@ PlasmoidItem {
         if (refreshing)
             return
         refreshing = true
-        request("GET", "/state", undefined, function() { refreshing = false })
+        request("GET", "/state" + (shown ? "?level=1" : ""), undefined, function() { refreshing = false })
     }
-    function refreshSummary() { request("GET", "/state?devices=0", undefined, recordHistory) }
+    function refreshSummary() { request("GET", "/state?devices=0" + (popupAlive && shown ? "&level=1" : ""), undefined, recordHistory) }
     function refreshLogs() {
         request("GET", "/logs?after=" + latestLogId, undefined, function(data) {
             if (data.reset)

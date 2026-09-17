@@ -165,7 +165,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
     @property
     def app(self) -> Application:
-        return self.server.app  # type: ignore[attr-defined]
+        return self.server.app
 
     def log_message(self, format: str, *args: object) -> None:
         if self.path.startswith("/v1/state") or self.path.startswith("/v1/logs"):
@@ -199,8 +199,11 @@ class ApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/v1/state":
-            values = parse_qs(parsed.query).get("devices", ["1"])
+            query = parse_qs(parsed.query)
+            values = query.get("devices", ["1"])
             include_devices = values[0].casefold() not in {"0", "false", "no"}
+            if query.get("level", ["0"])[0].casefold() in {"1", "true", "yes"}:
+                self.app.engine.want_level()
             self._send(HTTPStatus.OK, self.app.state(include_devices=include_devices))
         elif path == "/v1/health":
             self._send(HTTPStatus.OK, {"ok": True, "runtime": self.app.engine.as_dict()})

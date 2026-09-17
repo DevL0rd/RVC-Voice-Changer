@@ -11,6 +11,7 @@ from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from typing import Any, BinaryIO, Callable
 
+from .bridge import MicrophoneBridge
 from .cable import PROCESSING_INPUT_NAME, VIRTUAL_MICROPHONE_NAME, VirtualMicrophone
 from .models import VoiceModel
 
@@ -43,11 +44,11 @@ class RuntimeState:
 
 
 class VoiceEngine:
-    """Runs Applio's RVC converter on the selected accelerator or CPU."""
 
     def __init__(self) -> None:
         self.cable = VirtualMicrophone()
         self.state = RuntimeState()
+        self._bridge = MicrophoneBridge(self._bridge_lost, self._bridge_level)
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -212,7 +213,6 @@ class VoiceEngine:
         self._start_incoming_translation(config, sample_rate)
 
     def bypass(self, config: dict[str, Any]) -> None:
-        """Keep the virtual microphone alive and feed it unconverted input."""
         with self._lock:
             self._deactivate(keep_cable=True)
             self.state.error = ""
@@ -233,6 +233,13 @@ class VoiceEngine:
 
             self._start_translator(config, sample_rate)
             self._stop_event.clear()
+            if self._translator is None:
+                self._bridge.start(input_device)
+                self._event(
+                    "info",
+                    "Bypass active: physical microphone is feeding RVC Virtual Microphone",
+                )
+                return
             self._capture = self._open_capture(input_device, sample_rate, self._block_frames)
             targets: list[tuple[str, str]] = [(PROCESSING_INPUT_NAME, "output")]
             monitor = (
@@ -248,16 +255,21 @@ class VoiceEngine:
             ]
             self._thread = threading.Thread(target=self._bypass_loop, name="rvc-bypass", daemon=True)
             self._thread.start()
-            if self._translator is not None:
-                self._event(
-                    "info",
-                    "Voice conversion bypassed; live translation is using the physical microphone",
-                )
-            else:
-                self._event(
-                    "info",
-                    "Bypass active: physical microphone is feeding RVC Virtual Microphone",
-                )
+            self._event(
+                "info",
+                "Voice conversion bypassed; live translation is using the physical microphone",
+            )
+
+    def want_level(self) -> None:
+        self._bridge.want_level()
+
+    def _bridge_level(self, level_db: float) -> None:
+        self.state.input_level_db = level_db
+
+    def _bridge_lost(self, error: str) -> None:
+        self.state.status = "error"
+        self.state.error = error
+        self._event("error", f"Bypass stream failed: {error}")
 
     def _bypass_loop(self) -> None:
         import numpy as np
@@ -620,7 +632,6 @@ class VoiceEngine:
 
     @staticmethod
     def _unmute_virtual_microphone() -> None:
-        """Clear a mute state restored by PipeWire-Pulse for the stable source name."""
         pactl = shutil.which("pactl")
         if not pactl:
             raise RuntimeError("pactl is required to initialize RVC Virtual Microphone")
@@ -636,7 +647,6 @@ class VoiceEngine:
 
     @staticmethod
     def _repair_virtual_microphone_consumers() -> int:
-        """Move streams that fell back while the virtual source was unavailable."""
         pactl = shutil.which("pactl")
         if not pactl:
             return 0
@@ -894,6 +904,7 @@ class VoiceEngine:
                 and incoming_thread is not threading.current_thread()
             ):
                 incoming_thread.join(timeout=3)
+            self._bridge.stop()
             self._stop_processes()
             self._stop_incoming_processes()
             if self._translator is not None:
@@ -946,7 +957,6 @@ class VoiceEngine:
         translated: Any | None,
         original_voice_volume: float,
     ) -> Any:
-        """Mix immediate source speech with asynchronous translated speech."""
         import numpy as np
 
         volume = max(0.0, min(1.0, float(original_voice_volume)))
