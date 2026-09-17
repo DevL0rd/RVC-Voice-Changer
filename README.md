@@ -220,7 +220,7 @@ The voice changer creates a single **RVC Virtual Microphone** and keeps it there
 
 <table>
   <tr>
-    <td width="36%" valign="middle" align="center"><img alt="The panel button with the voice off and with the voice on at 273 ms" src="docs/media/panel.png"></td>
+    <td width="36%" valign="middle" align="center"><img alt="The panel button with the voice off and with the voice on at 273 ms" src="docs/media/panel.png" width="300"></td>
     <td valign="middle">
       The panel button is a microphone that lights up while your voice is changing. Turn on its live latency readout and three small lights for the voice, mic translation and app translation in the widget's settings, along with the tab it opens on. Click it to open the dashboard, or middle-click to switch the voice on and off.
     </td>
