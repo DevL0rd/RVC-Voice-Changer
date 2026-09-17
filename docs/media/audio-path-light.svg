@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="560" viewBox="0 0 1280 560">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f6f9fe"/><stop offset="1" stop-color="#e6eef9"/></linearGradient>
+<clipPath id="clip"><rect width="1280" height="560" rx="24"/></clipPath><style>
+.ct{font:700 19px 'Inter','Segoe UI','Noto Sans',Helvetica,Arial,sans-serif}.cs{font:500 14px 'Inter','Segoe UI','Noto Sans',Helvetica,Arial,sans-serif}.sec{font:700 13px 'Inter','Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;letter-spacing:2px}.pl{font:700 14px 'Inter','Segoe UI','Noto Sans',Helvetica,Arial,sans-serif}.ap{font:600 14px 'Inter','Segoe UI','Noto Sans',Helvetica,Arial,sans-serif}
+.flow{animation:flow .9s linear infinite}@keyframes flow{to{stroke-dashoffset:-18}}
+.on{animation:on 10s ease-in-out infinite}@keyframes on{0%,46%{opacity:1}50%,96%{opacity:0}100%{opacity:1}}
+.off{animation:off 10s ease-in-out infinite}@keyframes off{0%,46%{opacity:0}50%,96%{opacity:1}100%{opacity:0}}
+.dim{animation:dim 10s ease-in-out infinite}@keyframes dim{0%,46%{opacity:1}50%,96%{opacity:.35}100%{opacity:1}}
+</style></defs>
+<g clip-path="url(#clip)">
+<rect width="1280" height="560" fill="url(#bg)"/>
+<text x="40" y="52" class="sec" fill="#6a7792">YOUR VOICE</text>
+<g class="on">
+<path d="M 236 196.0 L 290 196.0" fill="none" stroke="#cdd7e8" stroke-width="4" stroke-linecap="round"/><path class="flow" d="M 236 196.0 L 290 196.0" fill="none" stroke="#3ec27a" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 17"/>
+<path d="M 526 196.0 L 580 196.0" fill="none" stroke="#cdd7e8" stroke-width="4" stroke-linecap="round"/><path class="flow" d="M 526 196.0 L 580 196.0" fill="none" stroke="#3ec27a" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 17"/>
+<path d="M 810 196.0 L 864 196.0" fill="none" stroke="#cdd7e8" stroke-width="4" stroke-linecap="round"/><path class="flow" d="M 810 196.0 L 864 196.0" fill="none" stroke="#3ec27a" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 17"/>
+<path d="M 408 242 L 408 300" fill="none" stroke="#cdd7e8" stroke-width="4" stroke-linecap="round"/><path class="flow" d="M 408 242 L 408 300" fill="none" stroke="#b44fd6" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 17"/>
+</g>
+<g class="off">
+<path d="M 140 150 C 140 70, 980 70, 980 150" fill="none" stroke="#cdd7e8" stroke-width="4" stroke-linecap="round"/><path class="flow" d="M 140 150 C 140 70, 980 70, 980 150" fill="none" stroke="#3daee9" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 17"/>
+<rect x="436" y="64" width="332" height="32" rx="16" fill="#ffffff" stroke="#cfd9ea"/>
+<text x="602" y="85" text-anchor="middle" class="ap" fill="#5a6784">Voice off: your real voice passes straight through</text>
+</g>
+<path d="M 1096 196.0 L 1130 196.0" fill="none" stroke="#cdd7e8" stroke-width="4" stroke-linecap="round"/><path class="flow" d="M 1096 196.0 L 1130 196.0" fill="none" stroke="#3ec27a" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 17"/>
+<g><rect x="40" y="150" width="196" height="92" rx="16" fill="#ffffff" stroke="#cfd9ea" stroke-width="1.5"/><rect x="56" y="168" width="4" height="56" rx="2" fill="#3daee9"/><text x="74" y="192.0" class="ct" fill="#10172a">Microphone</text><text x="74" y="214.0" class="cs" fill="#5a6784">the one you pick</text></g>
+<g class="dim"><rect x="290" y="150" width="236" height="92" rx="16" fill="#ffffff" stroke="#cfd9ea" stroke-width="1.5"/><rect x="306" y="168" width="4" height="56" rx="2" fill="#3ec27a"/><text x="324" y="192.0" class="ct" fill="#10172a">RVC voice</text><text x="324" y="214.0" class="cs" fill="#5a6784">pitch · features · voice</text></g>
+<g class="dim"><rect x="580" y="150" width="230" height="92" rx="16" fill="#ffffff" stroke="#cfd9ea" stroke-width="1.5" stroke-dasharray="6 6"/><rect x="596" y="168" width="4" height="56" rx="2" fill="#f0a53a"/><text x="614" y="192.0" class="ct" fill="#10172a">Live translation</text><text x="614" y="214.0" class="cs" fill="#5a6784">optional · Gemini Live</text></g>
+<g><rect x="864" y="150" width="232" height="92" rx="16" fill="#ffffff" stroke="#cfd9ea" stroke-width="1.5"/><rect x="880" y="168" width="4" height="56" rx="2" fill="#3daee9"/><text x="898" y="192.0" class="ct" fill="#10172a">RVC Virtual Mic</text><text x="898" y="214.0" class="cs" fill="#5a6784">always there for apps</text></g>
+<rect x="1130" y="132" width="118" height="28" rx="14" fill="#ffffff" stroke="#cfd9ea"/>
+<text x="1189" y="151" text-anchor="middle" class="ap" fill="#10172a">Discord</text>
+<rect x="1130" y="166" width="118" height="28" rx="14" fill="#ffffff" stroke="#cfd9ea"/>
+<text x="1189" y="185" text-anchor="middle" class="ap" fill="#10172a">OBS Studio</text>
+<rect x="1130" y="200" width="118" height="28" rx="14" fill="#ffffff" stroke="#cfd9ea"/>
+<text x="1189" y="219" text-anchor="middle" class="ap" fill="#10172a">Games</text>
+<rect x="1130" y="234" width="118" height="28" rx="14" fill="#ffffff" stroke="#cfd9ea"/>
+<text x="1189" y="253" text-anchor="middle" class="ap" fill="#10172a">Browser</text>
+<g class="dim">
+<g><rect x="290" y="300" width="236" height="76" rx="16" fill="#ffffff" stroke="#cfd9ea" stroke-width="1.5" stroke-dasharray="6 6"/><rect x="306" y="318" width="4" height="40" rx="2" fill="#b44fd6"/><text x="324" y="334.0" class="ct" fill="#10172a">Monitor</text><text x="324" y="356.0" class="cs" fill="#5a6784">hear yourself in headphones</text></g>
+</g>
+<g class="on">
+<rect x="620" y="318" width="150" height="36" rx="18" fill="#3ec27a" opacity="0.16"/><text x="695" y="341" text-anchor="middle" class="pl" fill="#3ec27a">Voice on</text>
+</g>
+<g class="off">
+<rect x="620" y="318" width="150" height="36" rx="18" fill="#3daee9" opacity="0.16"/><text x="695" y="341" text-anchor="middle" class="pl" fill="#3daee9">Voice off</text>
+</g>
+<rect x="40" y="410" width="1200" height="1" fill="#cfd9ea"/>
+<text x="40" y="448" class="sec" fill="#6a7792">WHAT YOU HEAR</text>
+<path d="M 276 503.0 L 330 503.0" fill="none" stroke="#cdd7e8" stroke-width="4" stroke-linecap="round"/><path class="flow" d="M 276 503.0 L 330 503.0" fill="none" stroke="#f0a53a" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 17"/>
+<path d="M 590 503.0 L 644 503.0" fill="none" stroke="#cdd7e8" stroke-width="4" stroke-linecap="round"/><path class="flow" d="M 590 503.0 L 644 503.0" fill="none" stroke="#f0a53a" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 17"/>
+<g><rect x="40" y="466" width="236" height="74" rx="16" fill="#ffffff" stroke="#cfd9ea" stroke-width="1.5"/><rect x="56" y="484" width="4" height="38" rx="2" fill="#b44fd6"/><text x="74" y="499.0" class="ct" fill="#10172a">An app's audio</text><text x="74" y="521.0" class="cs" fill="#5a6784">a call, a stream, a video</text></g>
+<g><rect x="330" y="466" width="260" height="74" rx="16" fill="#ffffff" stroke="#cfd9ea" stroke-width="1.5"/><rect x="346" y="484" width="4" height="38" rx="2" fill="#f0a53a"/><text x="364" y="499.0" class="ct" fill="#10172a">App translation</text><text x="364" y="521.0" class="cs" fill="#5a6784">to the language you pick</text></g>
+<g><rect x="644" y="466" width="270" height="74" rx="16" fill="#ffffff" stroke="#cfd9ea" stroke-width="1.5"/><rect x="660" y="484" width="4" height="38" rx="2" fill="#3daee9"/><text x="678" y="499.0" class="ct" fill="#10172a">Your output</text><text x="678" y="521.0" class="cs" fill="#5a6784">translated speech on top</text></g>
+<text x="940" y="499.0" class="cs" fill="#5a6784">The app keeps playing as usual.</text>
+<text x="940" y="521.0" class="cs" fill="#5a6784">Runs alongside your own translation.</text>
+</g></svg>
