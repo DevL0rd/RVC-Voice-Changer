@@ -29,7 +29,8 @@
   <a href="#how-it-flows"><b>How the sound flows</b></a> ·
   <a href="#widget"><b>The widget</b></a> ·
   <a href="#voices"><b>Add voices</b></a> ·
-  <a href="#faq"><b>FAQ</b></a>
+  <a href="#faq"><b>FAQ</b></a> ·
+  <a href="#more"><b>More projects</b></a>
 </p>
 
 <p align="center">
@@ -329,6 +330,50 @@ It's stored only in your local settings file, readable by your user alone, and t
 <br>
 Yes. Set <b>System → Backend</b> to <b>CPU</b> while you play, then back to <b>Auto</b>. A larger block size helps the CPU keep up.
 </details>
+
+---
+
+<a id="more"></a>
+
+## 🧰 More from DevL0rd
+
+Other Plasma projects made to sit on the same desktop. Click a banner to open it on GitHub.
+
+<p align="center">
+  <a href="https://github.com/DevL0rd/Konveyor">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/media/more/konveyor-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="docs/media/more/konveyor-light.svg">
+      <img alt="Konveyor — Scrolling tiling for KDE Plasma" src="docs/media/more/konveyor-dark.svg" width="600">
+    </picture>
+  </a>
+  <br>
+  <a href="https://github.com/DevL0rd/Konveyor"><b>Konveyor</b></a> · Your windows, on a conveyor belt.
+</p>
+
+<p align="center">
+  <a href="https://github.com/DevL0rd/Android-Daemon">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/media/more/android-daemon-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="docs/media/more/android-daemon-light.svg">
+      <img alt="Android-Daemon — Your Android phone, part of your Plasma desktop" src="docs/media/more/android-daemon-dark.svg" width="600">
+    </picture>
+  </a>
+  <br>
+  <a href="https://github.com/DevL0rd/Android-Daemon"><b>Android-Daemon</b></a> · Your phone, right on your desktop.
+</p>
+
+<p align="center">
+  <a href="https://github.com/DevL0rd/Syncthing-Monitor">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/media/more/syncthing-monitor-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="docs/media/more/syncthing-monitor-light.svg">
+      <img alt="Syncthing Monitor — Syncthing, live in your Plasma panel" src="docs/media/more/syncthing-monitor-dark.svg" width="600">
+    </picture>
+  </a>
+  <br>
+  <a href="https://github.com/DevL0rd/Syncthing-Monitor"><b>Syncthing Monitor</b></a> · Your sync, at a glance.
+</p>
 
 ---
 
