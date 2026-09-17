@@ -128,3 +128,9 @@ Uninstalling keeps downloaded voice models and saved settings.
 
 Linux RVC Voice Changer is released under the MIT License. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party notices.
+
+## Updates
+
+On pacman-based systems, `./install.sh` registers the git checkout with system updates. Every `pacman -Syu` fetches the checkout and, when upstream has new commits and your checkout has no local changes or commits of its own, fast-forwards it and reinstalls without restarting Plasma. You get a notification when an update is installed. If no desktop session is running during the update, the rest of the install finishes at your next login. Other distributions don't get this hook; run `git pull && ./install.sh` yourself.
+
+Packages (for example from the AUR) pass `--aur` or set `RVC_AUR=true` so the package manager handles updates instead, and no hook is registered. `./uninstall.sh` removes the hook.

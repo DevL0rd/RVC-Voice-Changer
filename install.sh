@@ -6,6 +6,24 @@ if [[ ! -f "$REPO_DIR/src/rvc_voice_changer/daemon.py" ]]; then
     echo "Repository files are incomplete."
     exit 1
 fi
+source "$REPO_DIR/packaging/lib.sh"
+
+AUR=false
+SYSTEM_UPDATE=false
+[[ ${RVC_AUR:-} == @(1|true|yes) ]] && AUR=true
+for argument in "$@"; do
+    case "$argument" in
+    --aur) AUR=true ;;
+    --system-update) SYSTEM_UPDATE=true ;;
+    -h | --help)
+        echo "Usage: ./install.sh [--aur]"
+        echo "Installs the voice changer and, for a git checkout on a pacman system, updates it with every system update."
+        echo "  --aur  Installed by a package (also RVC_AUR=true); no update hook is registered."
+        exit 0
+        ;;
+    *) echo "Unknown option: $argument"; exit 1 ;;
+    esac
+done
 
 missing=0
 for command_name in python3 pw-dump pw-loopback pw-cat pactl kpackagetool6 curl; do
@@ -203,6 +221,12 @@ if torch.cuda.is_available():
 else:
     print("Inference runtime: CPU")
 PY
+
+if $SYSTEM_UPDATE; then
+    notify_updated "The voice changer is up to date. Restart Plasma or log out and back in to load the updated widget."
+    exit 0
+fi
+register_system_updates "$REPO_DIR" "$AUR"
 
 echo
 echo "Installed. Add 'RVC Voice Changer' from Plasma's Add Widgets menu."

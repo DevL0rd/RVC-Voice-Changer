@@ -1,0 +1,12 @@
+[Unit]
+Description=Finish the RVC Voice Changer update from the last system update
+ConditionPathExists=%h/.local/state/linux-rvc-voice-changer/update-pending
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@CHECKOUT@
+ExecStart=@CHECKOUT@/install.sh --system-update
+
+[Install]
+WantedBy=graphical-session.target

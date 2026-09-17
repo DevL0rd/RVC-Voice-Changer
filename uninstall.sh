@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BIN_DIR="$HOME/.local/bin"
+source "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/packaging/lib.sh"
 USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 
 echo "Stopping Linux RVC Voice Changer..."
@@ -10,6 +11,7 @@ rm -f "$USER_UNIT_DIR/linux-rvc-voice-changer.service"
 systemctl --user daemon-reload
 
 rm -f "$BIN_DIR/rvc-voice-changer" "$BIN_DIR/rvc-voice-changer-ctl"
+unregister_system_updates
 kpackagetool6 -t Plasma/Applet -r org.devl0rd.rvcvoicechanger >/dev/null 2>&1 || true
 
 echo "Removed the service, command links, applet, and live virtual microphone."

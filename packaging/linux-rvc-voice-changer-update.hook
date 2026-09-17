@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Updating RVC Voice Changer...
+When = PostTransaction
+Exec = /usr/lib/linux-rvc-voice-changer/system-update
+Depends = git
