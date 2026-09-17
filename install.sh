@@ -38,7 +38,7 @@ if (( missing )); then
 fi
 
 if [[ ! -e "$REPO_DIR/shared/common/PopupShell.qml" ]]; then
-    echo "shared/common (Linux-Plasma-Shared submodule) is empty."
+    echo "shared/common (Plasma-Shared submodule) is empty."
     echo "Run: git submodule update --init --recursive"
     exit 1
 fi
