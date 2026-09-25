@@ -1,0 +1,10 @@
+#!/bin/bash
+exec 3>&1 1>&2
+while IFS= read -r -d '' frame; do
+    command=${frame%%$'\n'*}
+    if [[ $command == COMMITEND && -x /usr/lib/linux-rvc-voice-changer/system-update ]]; then
+        systemd-run --no-block --collect --unit=linux-rvc-voice-changer-system-update /usr/lib/linux-rvc-voice-changer/system-update
+    fi
+    printf 'ACK\n\n\0' >&3
+    [[ $command == _DISCONNECT ]] && exit 0
+done

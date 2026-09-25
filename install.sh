@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-REPO_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 if [[ ! -f "$REPO_DIR/src/rvc_voice_changer/daemon.py" ]]; then
     echo "Repository files are incomplete."
     exit 1
@@ -9,21 +9,42 @@ fi
 source "$REPO_DIR/packaging/lib.sh"
 
 AUR=false
+SKIP_DEPS=false
 SYSTEM_UPDATE=false
+SYSTEM_UPDATE_ROOT=false
+OWNER=""
 [[ ${RVC_AUR:-} == @(1|true|yes) ]] && AUR=true
-for argument in "$@"; do
-    case "$argument" in
+while (( $# )); do
+    case "$1" in
     --aur) AUR=true ;;
+    --skip-deps) SKIP_DEPS=true ;;
     --system-update) SYSTEM_UPDATE=true ;;
+    --system-update-root) SYSTEM_UPDATE_ROOT=true ;;
+    --owner) OWNER=${2:-}; shift ;;
     -h | --help)
-        echo "Usage: ./install.sh [--aur]"
-        echo "Installs the voice changer and, for a git checkout on a pacman system, updates it with every system update."
-        echo "  --aur  Installed by a package (also RVC_AUR=true); no update hook is registered."
+        echo "Usage: ./install.sh [--skip-deps] [--aur]"
+        echo "Installs the voice changer and, for a git checkout, updates it with every system update."
+        echo "  --skip-deps  Do not install missing system packages with the package manager"
+        echo "  --aur        Installed by a package (also RVC_AUR=true); no update hook is registered."
         exit 0
         ;;
-    *) echo "Unknown option: $argument"; exit 1 ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
     esac
+    shift
 done
+
+if $SYSTEM_UPDATE_ROOT; then
+    if [[ $EUID -ne 0 || -z $OWNER ]]; then
+        echo "--system-update-root runs from the system update hook."
+        exit 1
+    fi
+    install_update_hooks "$REPO_DIR" "$OWNER" "$(package_manager)"
+    exit 0
+fi
+
+if ! $AUR && ! $SKIP_DEPS && ! $SYSTEM_UPDATE; then
+    "$REPO_DIR/packaging/dependencies.sh"
+fi
 
 missing=0
 for command_name in python3 pw-dump pw-loopback pw-link pw-cat pactl kpackagetool6 curl; do
@@ -45,6 +66,11 @@ fi
 
 chmod +x "$REPO_DIR/bin/rvc-voice-changer" "$REPO_DIR/bin/rvc-voice-changer-ctl"
 
+PYTHON_VERSION=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+if [[ -d "$REPO_DIR/.venv" && ! -d "$REPO_DIR/.venv/lib/python$PYTHON_VERSION" ]]; then
+    echo "Python is now $PYTHON_VERSION; rebuilding the isolated RVC runtime..."
+    rm -rf "$REPO_DIR/.venv"
+fi
 if [[ ! -x "$REPO_DIR/.venv/bin/python" ]]; then
     echo "Creating the isolated RVC runtime..."
     python3 -m venv "$REPO_DIR/.venv"
@@ -182,7 +208,7 @@ fi
 UNIT="$USER_UNIT_DIR/linux-rvc-voice-changer.service"
 STAMP="$CONFIG_DIR/installed-revision"
 NEW_UNIT=$(sed "s|@REPO_DIR@|$REPO_DIR|g" "$REPO_DIR/systemd/linux-rvc-voice-changer.service.in")
-REVISION=$( { printf '%s\n' "$NEW_UNIT"; find "$REPO_DIR/src" "$REPO_DIR/bin" "$REPO_DIR/requirements-runtime.txt" -type f -not -path '*/__pycache__/*' -print0 | sort -z | xargs -0 sha256sum; } | sha256sum | cut -d' ' -f1)
+REVISION=$( { printf '%s\n' "$NEW_UNIT" "$PYTHON_VERSION"; find "$REPO_DIR/src" "$REPO_DIR/bin" "$REPO_DIR/requirements-runtime.txt" -type f -not -path '*/__pycache__/*' -print0 | LC_ALL=C sort -z | xargs -0 sha256sum; } | sha256sum | cut -d' ' -f1)
 RESTART=0
 if [[ ! -f "$UNIT" ]] || [[ "$(<"$UNIT")" != "$NEW_UNIT" ]]; then
     printf '%s\n' "$NEW_UNIT" > "$UNIT"

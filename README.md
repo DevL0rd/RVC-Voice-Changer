@@ -49,7 +49,7 @@ cd RVC-Voice-Changer
 ./install.sh
 ```
 
-That's it. The installer builds a private Python runtime, picks the right PyTorch for your NVIDIA or AMD graphics card (or your CPU), downloads the pitch and speech models RVC needs, installs the widget and starts the background service. No `sudo` needed.
+That's it. The installer adds any system packages you're missing, builds a private Python runtime, picks the right PyTorch for your NVIDIA or AMD graphics card (or your CPU), downloads the pitch and speech models RVC needs, installs the widget and starts the background service. It only asks for `sudo` to add missing packages and to hook into system updates.
 
 > [!TIP]
 > Add **RVC Voice Changer** to your panel from **Add Widgets**, drop a voice into [`models/`](#voices), then pick **RVC Virtual Microphone** as the input device in Discord, OBS or your game.
@@ -57,7 +57,7 @@ That's it. The installer builds a private Python runtime, picks the right PyTorc
 <table>
   <tr>
     <td>🔄 <b>Update</b></td>
-    <td>On pacman-based systems the voice changer updates itself with every system update and tells you when it's done. Anywhere else, run <code>git pull &amp;&amp; ./install.sh</code>. It's safe to repeat and keeps your voices and settings.</td>
+    <td>The voice changer updates itself with every system update and tells you when it's done. When an update brings a new Python, it rebuilds its runtime for it. On Fedora Atomic desktops and SteamOS that happens at your next login after an update. You can also run <code>git pull &amp;&amp; ./install.sh</code> any time. It's safe to repeat and keeps your voices and settings.</td>
   </tr>
   <tr>
     <td>📦 <b>From a package</b></td>
@@ -74,6 +74,14 @@ That's it. The installer builds a private Python runtime, picks the right PyTorc
   <tr>
     <td>🖥️ <b>Needs</b></td>
     <td>KDE Plasma 6, PipeWire with WirePlumber and PipeWire-Pulse, and Python 3.11 or newer. An NVIDIA (CUDA) or AMD (ROCm) GPU makes it fast; a CPU works too.</td>
+  </tr>
+  <tr>
+    <td>🧊 <b>Atomic desktops</b></td>
+    <td>On Fedora Atomic desktops like Kinoite, Aurora and Bazzite, and on SteamOS in Desktop Mode, everything installs to your home folder, so the read-only system stays untouched. If the system image is missing something, the installer tells you exactly what to add.</td>
+  </tr>
+  <tr>
+    <td>🐧 <b>Distros</b></td>
+    <td>The installer sets everything up on Arch and Arch-based systems like CachyOS, Fedora, openSUSE Tumbleweed, Debian testing, Fedora Atomic desktops like Kinoite, Aurora and Bazzite, and SteamOS.</td>
   </tr>
 </table>
 

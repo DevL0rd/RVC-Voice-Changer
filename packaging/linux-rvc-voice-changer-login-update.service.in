@@ -1,0 +1,11 @@
+[Unit]
+Description=Update RVC Voice Changer after a system image update
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@CHECKOUT@
+ExecStart=@CHECKOUT@/packaging/system-update
+
+[Install]
+WantedBy=graphical-session.target

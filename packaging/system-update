@@ -1,60 +1,84 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
+exec 1>&2
+export HOME="${HOME:-/root}"
+export PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/bin:/bin}"
 ID="linux-rvc-voice-changer"
 TITLE="RVC Voice Changer"
 STATE_FILE="${UPDATE_SOURCE_STATE:-/var/lib/$ID/source}"
+GIT_ENV=(GIT_TERMINAL_PROMPT=0 GIT_ASKPASS= GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15")
 
 log() {
     printf '%s: %s\n' "$ID" "$*"
 }
 
-[[ -r $STATE_FILE ]] || exit 0
-mapfile -t state <"$STATE_FILE"
-checkout="${state[0]:-}"
-owner="${state[1]:-}"
+if [[ $EUID -eq 0 ]]; then
+    [[ -r $STATE_FILE ]] || exit 0
+    mapfile -t state <"$STATE_FILE"
+    checkout="${state[0]:-}"
+    owner="${state[1]:-}"
+else
+    checkout=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+    owner=$(id -un)
+fi
 [[ -n $checkout && -n $owner ]] || exit 0
 uid=$(id -u "$owner" 2>/dev/null) || exit 0
 home=$(getent passwd "$owner" | cut -d: -f6)
 
 as_owner() {
+    if [[ $EUID -ne 0 ]]; then
+        env "${GIT_ENV[@]}" "$@"
+        return
+    fi
     runuser -u "$owner" -- env -i HOME="$home" USER="$owner" LOGNAME="$owner" PATH="$home/.local/bin:/usr/local/bin:/usr/bin:/bin" \
         LANG="${LANG:-C.UTF-8}" XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
-        GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15" "$@"
+        "${GIT_ENV[@]}" "$@"
 }
 
 git_owner() {
     as_owner git -C "$checkout" "$@"
 }
 
+pull_updates() {
+    git_owner rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1 || return 1
+    if ! git_owner fetch --quiet; then
+        log "could not fetch updates for $checkout, skipping"
+        return 1
+    fi
+    [[ $(git_owner rev-list --count 'HEAD..@{upstream}') -gt 0 ]] || return 1
+    if [[ -n $(git_owner status --porcelain --untracked-files=no) ]]; then
+        log "$checkout has local changes, skipping the update"
+        return 1
+    fi
+    if [[ $(git_owner rev-list --count '@{upstream}..HEAD') -gt 0 ]]; then
+        log "$checkout has local commits that aren't upstream, skipping the update"
+        return 1
+    fi
+    git_owner merge --ff-only --quiet '@{upstream}' || return 1
+    git_owner submodule update --init --recursive --quiet
+    log "updated to $(git_owner rev-parse --short HEAD)"
+}
+
+runtime_current() {
+    local version
+    version=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])') || return 1
+    [[ -d $checkout/.venv/lib/python$version ]]
+}
+
 if [[ ! -d $checkout ]] || ! git_owner rev-parse --git-dir >/dev/null 2>&1; then
     log "checkout $checkout is gone or not a git repository, skipping"
     exit 0
 fi
-git_owner rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1 || exit 0
-if ! git_owner fetch --quiet; then
-    log "could not fetch updates for $checkout, skipping"
-    exit 0
+if ! pull_updates; then
+    runtime_current && exit 0
+    log "Python changed, rebuilding the $TITLE runtime"
 fi
-[[ $(git_owner rev-list --count 'HEAD..@{upstream}') -gt 0 ]] || exit 0
-if [[ -n $(git_owner status --porcelain --untracked-files=no) ]]; then
-    log "$checkout has local changes, skipping the update"
-    exit 0
-fi
-if [[ $(git_owner rev-list --count '@{upstream}..HEAD') -gt 0 ]]; then
-    log "$checkout has local commits that aren't upstream, skipping the update"
-    exit 0
-fi
-git_owner merge --ff-only --quiet '@{upstream}' || exit 0
-git_owner submodule update --init --recursive --quiet
-log "updated to $(git_owner rev-parse --short HEAD)"
 
-install -Dm755 "$checkout/packaging/system-update" "/usr/lib/$ID/system-update"
-install -Dm644 "$checkout/packaging/$ID-update.hook" "/etc/pacman.d/hooks/$ID-update.hook"
-if grep -q -- '--system-update-root' "$checkout/install.sh"; then
+if [[ $EUID -eq 0 ]]; then
     (cd "$checkout" && "$checkout/install.sh" --system-update-root --owner "$owner")
 fi
-if [[ -S /run/user/$uid/bus ]]; then
+if [[ $EUID -ne 0 || -S /run/user/$uid/bus ]]; then
     (cd "$checkout" && as_owner "$checkout/install.sh" --system-update)
 else
     as_owner mkdir -p "$home/.local/state/$ID"
