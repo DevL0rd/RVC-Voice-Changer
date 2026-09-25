@@ -13,6 +13,8 @@ import logging
 from transformers import HubertModel
 import warnings
 
+from rvc import ASSETS_DIR
+
 # Remove this to see warnings about transformers models
 warnings.filterwarnings("ignore")
 
@@ -24,7 +26,7 @@ logging.getLogger("torch").setLevel(logging.ERROR)
 now_dir = os.getcwd()
 sys.path.append(now_dir)
 
-base_path = os.path.join(now_dir, "rvc", "models", "formant", "stftpitchshift")
+base_path = os.path.join(ASSETS_DIR, "formant", "stftpitchshift")
 stft = base_path + ".exe" if sys.platform == "win32" else base_path
 
 
@@ -104,7 +106,7 @@ def format_title(title):
 
 
 def load_embedding(embedder_model, custom_embedder=None):
-    embedder_root = os.path.join(now_dir, "rvc", "models", "embedders")
+    embedder_root = os.path.join(ASSETS_DIR, "embedders")
     embedding_list = {
         "contentvec": os.path.join(embedder_root, "contentvec"),
         "spin": os.path.join(embedder_root, "spin"),

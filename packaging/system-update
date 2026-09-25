@@ -6,7 +6,6 @@ export HOME="${HOME:-/root}"
 export PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/bin:/bin}"
 ID="linux-rvc-voice-changer"
 TITLE="RVC Voice Changer"
-STATE_FILE="${UPDATE_SOURCE_STATE:-/var/lib/$ID/source}"
 GIT_ENV=(GIT_TERMINAL_PROMPT=0 GIT_ASKPASS= GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15")
 
 log() {
@@ -14,17 +13,24 @@ log() {
 }
 
 if [[ $EUID -eq 0 ]]; then
-    [[ -r $STATE_FILE ]] || exit 0
-    mapfile -t state <"$STATE_FILE"
-    checkout="${state[0]:-}"
-    owner="${state[1]:-}"
+    STATE_FILE="${UPDATE_SOURCE_STATE:-/var/lib/$ID/source}"
 else
-    checkout=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-    owner=$(id -un)
+    STATE_FILE="${UPDATE_SOURCE_STATE:-$HOME/.local/state/$ID/source}"
 fi
+[[ -r $STATE_FILE ]] || exit 0
+mapfile -t state <"$STATE_FILE"
+checkout="${state[0]:-}"
+owner="${state[1]:-}"
 [[ -n $checkout && -n $owner ]] || exit 0
+[[ $EUID -eq 0 || $owner == "$(id -un)" ]] || exit 0
 uid=$(id -u "$owner" 2>/dev/null) || exit 0
 home=$(getent passwd "$owner" | cut -d: -f6)
+if [[ $EUID -eq 0 ]]; then
+    data_dir="$home/.local/share/Linux-RVC-Voice-Changer"
+else
+    data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/Linux-RVC-Voice-Changer"
+fi
+pending="$home/.local/state/$ID/update-pending"
 
 as_owner() {
     if [[ $EUID -ne 0 ]]; then
@@ -63,16 +69,16 @@ pull_updates() {
 runtime_current() {
     local version
     version=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])') || return 1
-    [[ -d $checkout/.venv/lib/python$version ]]
+    [[ -d $data_dir/venv/lib/python$version && -x $data_dir/runtime/bin/rvc-voice-changer ]]
 }
 
 if [[ ! -d $checkout ]] || ! git_owner rev-parse --git-dir >/dev/null 2>&1; then
     log "checkout $checkout is gone or not a git repository, skipping"
     exit 0
 fi
-if ! pull_updates; then
+if ! pull_updates && [[ ! -e $pending ]]; then
     runtime_current && exit 0
-    log "Python changed, rebuilding the $TITLE runtime"
+    log "the $TITLE runtime is missing or built for another Python, rebuilding it"
 fi
 
 if [[ $EUID -eq 0 ]]; then
@@ -81,7 +87,7 @@ fi
 if [[ $EUID -ne 0 || -S /run/user/$uid/bus ]]; then
     (cd "$checkout" && as_owner "$checkout/install.sh" --system-update)
 else
-    as_owner mkdir -p "$home/.local/state/$ID"
-    as_owner touch "$home/.local/state/$ID/update-pending"
+    as_owner mkdir -p "$(dirname "$pending")"
+    as_owner touch "$pending"
     log "$TITLE will finish updating at your next login"
 fi

@@ -49,10 +49,10 @@ cd RVC-Voice-Changer
 ./install.sh
 ```
 
-That's it. The installer adds any system packages you're missing, builds a private Python runtime, picks the right PyTorch for your NVIDIA or AMD graphics card (or your CPU), downloads the pitch and speech models RVC needs, installs the widget and starts the background service. It only asks for `sudo` to add missing packages and to hook into system updates.
+That's it. The installer adds any system packages you're missing, builds a private Python runtime, picks the right PyTorch for your NVIDIA or AMD graphics card (or your CPU), downloads the pitch and speech models RVC needs, installs the widget and starts the background service. Everything it runs lives in `~/.local/share/Linux-RVC-Voice-Changer`, so the checkout is only where updates come from. It only asks for `sudo` to add missing packages and to hook into system updates.
 
 > [!TIP]
-> Add **RVC Voice Changer** to your panel from **Add Widgets**, drop a voice into [`models/`](#voices), then pick **RVC Virtual Microphone** as the input device in Discord, OBS or your game.
+> Add **RVC Voice Changer** to your panel from **Add Widgets**, drop a voice into your [voice folder](#voices), then pick **RVC Virtual Microphone** as the input device in Discord, OBS or your game.
 
 <table>
   <tr>
@@ -98,7 +98,7 @@ That's it. The installer adds any system packages you're missing, builds a priva
     <td width="44%" valign="top"><img alt="The Voice tab with voice models, the microphone level and audio routing" src="docs/media/voice.jpg"></td>
     <td valign="top">
       <br>
-      Every voice in your <code>models/</code> folder shows up as a chip. Tap one and the voice changer switches to it on the spot. Voices that come with a retrieval index get a small <b>index</b> badge.
+      Every voice in your voice folder shows up as a chip. Tap one and the voice changer switches to it on the spot. Voices that come with a retrieval index get a small <b>index</b> badge.
       <br><br>
       Flip the <b>Voice</b> switch at the top to start converting, or middle-click the panel button. The tile shows your live latency, and the microphone meter shows what it's hearing.
       <br><br>
@@ -268,7 +268,7 @@ The voice changer creates a single **RVC Virtual Microphone** and keeps it there
 
 ## 🗣️ Add voices
 
-Put each voice in its own folder inside `models/`:
+Put each voice in its own folder inside `~/.local/share/Linux-RVC-Voice-Changer/models/`:
 
 ```text
 models/
@@ -279,7 +279,7 @@ models/
     └── narrator.pth
 ```
 
-Each folder needs one `.pth` model. A matching `.index` file is optional and usually makes the voice sound closer to the original. Use **Open folder** in the widget to jump there, then **Rescan** after adding or removing voices. Your voices stay on your machine and out of Git.
+Each folder needs one `.pth` model. A matching `.index` file is optional and usually makes the voice sound closer to the original. Use **Open folder** in the widget to jump there, then **Rescan** after adding or removing voices. Your voices stay on your machine. Voices from an older install, which kept them in the checkout's `models/` folder, move there the next time you run `./install.sh`.
 
 ---
 

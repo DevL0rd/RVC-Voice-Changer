@@ -5,8 +5,8 @@ Wants=pipewire.service wireplumber.service
 
 [Service]
 Type=simple
-WorkingDirectory=@REPO_DIR@
-ExecStart=@REPO_DIR@/bin/rvc-voice-changer
+WorkingDirectory=@DATA_DIR@
+ExecStart=@DATA_DIR@/runtime/bin/rvc-voice-changer
 Restart=on-failure
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1

@@ -108,7 +108,7 @@ ColumnLayout {
 
         Note {
             available: root.voices.length === 0
-            text: i18n("No voices yet. Put each voice in its own folder under models/ with one .pth file and an optional .index file.")
+            text: i18n("No voices yet. Open the voice models folder and put each voice in its own folder with one .pth file and an optional .index file.")
         }
 
         SettingRow {
@@ -118,7 +118,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 PlasmaComponents.Label {
                     Layout.fillWidth: true
-                    text: root.voices.length === 0 ? i18n("Add a model folder under models/") : i18np("%1 voice found", "%1 voices found", root.voices.length)
+                    text: root.voices.length === 0 ? i18n("Add a voice folder here") : i18np("%1 voice found", "%1 voices found", root.voices.length)
                     font: Kirigami.Theme.smallFont
                     opacity: 0.65
                     elide: Text.ElideRight

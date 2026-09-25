@@ -4,15 +4,10 @@ import argparse
 import signal
 import sys
 import threading
-from pathlib import Path
 
 from .api import ApiServer, Application
 from .config import ConfigStore
 from .engine import VoiceEngine
-
-
-def repository_dir() -> Path:
-    return Path(__file__).resolve().parents[2]
 
 
 def main() -> None:
@@ -21,7 +16,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, help="API port")
     args = parser.parse_args()
 
-    config = ConfigStore(repository_dir())
+    config = ConfigStore()
     host = args.host or config.data["server"]["host"]
     port = args.port or config.data["server"]["port"]
     if host not in {"127.0.0.1", "localhost", "::1"}:

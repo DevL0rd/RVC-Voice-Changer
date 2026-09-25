@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from rvc import DATA_DIR
+
 
 TRANSLATION_LANGUAGES: tuple[tuple[str, str], ...] = (
     ("af", "Afrikaans"),
@@ -165,10 +167,9 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
 
 
 class ConfigStore:
-    def __init__(self, repo_dir: Path) -> None:
+    def __init__(self) -> None:
         config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
         self.path = config_home / "Linux-RVC-Voice-Changer" / "config.json"
-        self.repo_dir = repo_dir
         self.data: dict[str, Any] = {}
         self.load()
 
@@ -206,7 +207,7 @@ class ConfigStore:
     @property
     def models_dir(self) -> Path:
         value = Path(os.path.expandvars(os.path.expanduser(str(self.data["models_dir"]))))
-        return value if value.is_absolute() else self.repo_dir / value
+        return value if value.is_absolute() else DATA_DIR / value
 
     def _normalise(self) -> None:
         model = self.data["model"]

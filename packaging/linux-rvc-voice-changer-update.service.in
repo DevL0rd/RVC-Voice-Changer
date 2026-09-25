@@ -5,8 +5,7 @@ After=graphical-session.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=@CHECKOUT@
-ExecStart=@CHECKOUT@/install.sh --system-update
+ExecStart=@UPDATER_DIR@/system-update
 
 [Install]
 WantedBy=graphical-session.target

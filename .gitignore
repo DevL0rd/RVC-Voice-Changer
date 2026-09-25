@@ -1,8 +1,5 @@
 # Local state and voice models
 config.json
-models/*
-!models/README.md
-rvc/models/
 *.pth
 *.index
 *.onnx
@@ -20,6 +17,3 @@ dist/
 .vscode/
 *.swp
 .DS_Store
-
-# Shared QML components synced from the shared/common submodule by install.sh
-plasmoids/*/contents/ui/lib/

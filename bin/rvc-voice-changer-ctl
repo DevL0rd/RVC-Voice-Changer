@@ -1,8 +1,7 @@
 #!/bin/sh
 set -eu
-REPO_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-export PYTHONPATH="$REPO_DIR/src:$REPO_DIR${PYTHONPATH:+:$PYTHONPATH}"
-if [ -x "$REPO_DIR/.venv/bin/python" ]; then
-    exec "$REPO_DIR/.venv/bin/python" -m rvc_voice_changer.cli "$@"
-fi
-exec python3 -m rvc_voice_changer.cli "$@"
+RUNTIME_DIR=$(CDPATH='' cd -- "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)
+RVC_DATA_DIR=$(dirname -- "$RUNTIME_DIR")
+export RVC_DATA_DIR
+export PYTHONPATH="$RUNTIME_DIR/src:$RUNTIME_DIR${PYTHONPATH:+:$PYTHONPATH}"
+exec "$RVC_DATA_DIR/venv/bin/python" -m rvc_voice_changer.cli "$@"
