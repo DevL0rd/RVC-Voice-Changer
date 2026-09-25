@@ -69,7 +69,7 @@ That's it. The installer adds any system packages you're missing, builds a priva
   </tr>
   <tr>
     <td>🧹 <b>Remove</b></td>
-    <td>Run <code>./uninstall.sh</code>. It removes the service, the widget and the virtual microphone, and keeps your voices and settings.</td>
+    <td>Run <code>./uninstall.sh</code>. It removes the service, the widget, the virtual microphone, its shortcuts, the private Python runtime and the update hook, and keeps your voices and settings.</td>
   </tr>
   <tr>
     <td>🖥️ <b>Needs</b></td>
