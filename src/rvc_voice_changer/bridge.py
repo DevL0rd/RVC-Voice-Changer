@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import shutil
 import subprocess
@@ -77,7 +78,7 @@ class MicrophoneBridge:
             ).start()
             capture_props = " ".join(
                 (
-                    f"target.object={source}",
+                    f"target.object={json.dumps(source, ensure_ascii=False)}",
                     f"node.name={CAPTURE_NODE}",
                     'node.description="RVC Bypass Capture"',
                     "node.dont-reconnect=true",
@@ -108,9 +109,12 @@ class MicrophoneBridge:
         process = self._loopback
         error = ""
         if process is not None and process.poll() is not None and process.stderr:
-            error = process.stderr.read().decode(errors="replace").strip()
+            output = process.stderr.read().decode(errors="replace")
+            error = next((line.strip() for line in output.splitlines() if line.strip()), "")
         self.stop()
-        raise RuntimeError(error or f"PipeWire could not link input {source} to RVC Virtual Microphone")
+        if error:
+            raise RuntimeError(f"PipeWire could not open input {source}: {error}")
+        raise RuntimeError(f"PipeWire could not link input {source} to RVC Virtual Microphone")
 
     def stop(self) -> None:
         self._stopping.set()

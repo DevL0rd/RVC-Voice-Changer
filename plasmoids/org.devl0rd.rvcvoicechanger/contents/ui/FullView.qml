@@ -148,7 +148,7 @@ Item {
                         active: root.voiceOn
                         latency: Number(root.runtime.latency_ms || 0)
                         error: root.failed
-                        status: root.failed ? root.runtime.error
+                        status: root.failed ? i18n("Error")
                               : root.runtime.status === "loading" ? i18n("Loading %1…", root.selectedVoiceName())
                               : root.selectedVoiceName()
                         help: i18n("Switches RVC voice conversion on or off. Translation controls remain independent.")
@@ -214,6 +214,7 @@ Item {
                             Layout.fillWidth: true
                             text: root.requestError || root.runtime.error || ""
                             color: Kirigami.Theme.negativeTextColor
+                            textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                         }
                     }

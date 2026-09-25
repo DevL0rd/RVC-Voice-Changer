@@ -110,6 +110,9 @@ Rectangle {
             font: Kirigami.Theme.smallFont
             color: tile.error ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
             opacity: tile.error ? 1 : 0.65
+            textFormat: Text.PlainText
+            wrapMode: Text.NoWrap
+            maximumLineCount: 1
             elide: Text.ElideRight
         }
     }

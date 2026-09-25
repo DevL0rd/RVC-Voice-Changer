@@ -5,7 +5,7 @@ SOURCE="bluez_input.E8:07:BF:9C:1D:B7"
 API="http://127.0.0.1:17843/v1"
 
 state() {
-    curl -s "$API/state" | python3 -c "import json, sys; state = json.load(sys.stdin); print(state.get('status', ''), '|', state.get('error') or '')"
+    curl -s "$API/state" | python3 -c "import json, sys; state = json.load(sys.stdin); runtime = json.load(sys.stdin)['runtime']; print(runtime.get('status', ''), '|', runtime.get('error') or '')"
 }
 
 input_device() {
@@ -32,7 +32,12 @@ done
 grep -qF "\"$SOURCE\"" <<<"$(pw-dump)" || { echo "FAILED: the test Bluetooth microphone did not appear in PipeWire"; exit 1; }
 
 curl -s -X POST -H 'Content-Type: application/json' "$API/enabled" -d '{"enabled": false}' >/dev/null
-echo "Selecting $SOURCE as the input: $(configure_input "$SOURCE")"
+response=$(configure_input "$SOURCE")
+echo "Selecting $SOURCE as the input: $response"
+if python3 -c "import json, sys; sys.exit(0 if 'error' in json.loads(sys.argv[1]) else 1)" "$response"; then
+    echo "FAILED: the voice changer refused a microphone whose name has colons"
+    exit 1
+fi
 
 linked() {
     grep -A3 -F "$SOURCE:" <<<"$links" | grep -qF "rvc_bypass_capture"
