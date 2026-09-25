@@ -60,6 +60,9 @@ as_tester /opt/install-test/migrated.sh "$CHECKOUT" "${ASSETS[@]}"
 step "Checking that the voice changer runs"
 as_tester /opt/install-test/verify.sh "$CHECKOUT"
 
+step "Checking that a Bluetooth microphone, whose name has colons, works"
+as_tester /opt/install-test/bluetooth-mic.sh
+
 step "Moving the checkout away and checking that the voice changer still runs"
 as_tester_at_home mv "$CHECKOUT" "$MOVED"
 as_tester_at_home systemctl --user restart linux-rvc-voice-changer.service
