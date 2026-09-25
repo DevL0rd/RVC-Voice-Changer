@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/DevL0rd/RVC-Voice-Changer/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/DevL0rd/RVC-Voice-Changer/ci.yml?branch=main&style=for-the-badge&label=build&logo=githubactions&logoColor=white"></a>
   <img alt="KDE Plasma 6" src="https://img.shields.io/badge/KDE_Plasma-6-1d99f3?style=for-the-badge&logo=kde&logoColor=white">
   <img alt="PipeWire" src="https://img.shields.io/badge/PipeWire-native-4a86c8?style=for-the-badge">
   <img alt="NVIDIA, AMD or CPU" src="https://img.shields.io/badge/NVIDIA_·_AMD_·_CPU-accelerated-76b900?style=for-the-badge&logo=nvidia&logoColor=white">
