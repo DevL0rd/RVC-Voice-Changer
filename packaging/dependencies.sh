@@ -3,10 +3,10 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-ARCH_PACKAGES=(python pipewire pipewire-pulse wireplumber libpulse kpackage kdeclarative qt6-declarative glib2 curl git)
-FEDORA_PACKAGES=(python3 pipewire-utils pipewire-pulseaudio wireplumber pulseaudio-utils kf6-kpackage kf6-kdeclarative qt6-qtdeclarative glib2 curl git libdnf5-plugin-actions)
-SUSE_PACKAGES=(python3 pipewire-tools pipewire-pulseaudio wireplumber pulseaudio-utils kf6-kpackage kf6-kdeclarative-imports qt6-declarative-imports glib2-tools curl git)
-DEBIAN_PACKAGES=(python3 python3-venv pipewire-bin pipewire-pulse wireplumber pulseaudio-utils kpackagetool6 qml6-module-org-kde-kquickcontrols qml6-module-qt-labs-folderlistmodel qml6-module-qtquick-shapes libglib2.0-bin curl git)
+ARCH_PACKAGES=(python gcc pipewire pipewire-pulse wireplumber libpulse kpackage kdeclarative qt6-declarative glib2 curl git)
+FEDORA_PACKAGES=(python3 python3-devel gcc pipewire-utils pipewire-pulseaudio wireplumber pulseaudio-utils kf6-kpackage kf6-kdeclarative qt6-qtdeclarative glib2 curl git libdnf5-plugin-actions)
+SUSE_PACKAGES=(python3 python3-devel gcc pipewire-tools pipewire-pulseaudio wireplumber pulseaudio-utils kf6-kpackage kf6-kdeclarative-imports qt6-declarative-imports glib2-tools curl git)
+DEBIAN_PACKAGES=(python3 python3-venv python3-dev gcc pipewire-bin pipewire-pulse wireplumber pulseaudio-utils kpackagetool6 qml6-module-org-kde-kquickcontrols qml6-module-qt-labs-folderlistmodel qml6-module-qtquick-shapes libglib2.0-bin curl git)
 
 missing_packages() {
     local package
@@ -28,7 +28,7 @@ missing_packages() {
 if [[ -e /run/ostree-booted ]]; then
     manager=dnf
 elif ! manager=$(package_manager); then
-    echo "Unsupported package manager. Install Python 3 with venv, PipeWire with WirePlumber and PipeWire-Pulse, pactl, kpackagetool6, curl and git, then run ./install.sh --skip-deps"
+    echo "Unsupported package manager. Install Python 3 with venv and its development headers, a C compiler, PipeWire with WirePlumber and PipeWire-Pulse, pactl, kpackagetool6, curl and git, then run ./install.sh --skip-deps"
     exit 1
 fi
 case "$manager" in
