@@ -16,6 +16,8 @@ RVC_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/Linux-RVC-Voice-Changer"
 RVC_RUNTIME_DIR="$RVC_DATA_DIR/runtime"
 RVC_VENV_DIR="$RVC_DATA_DIR/venv"
 RVC_ASSETS_DIR="$RVC_DATA_DIR/assets"
+UPDATE_SOURCE_DIR="$RVC_DATA_DIR/source"
+UPDATE_GIT_ENV=(GIT_TERMINAL_PROMPT=0 GIT_ASKPASS= GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15")
 declare -A UPDATE_HOOKS=(
     [pacman]="$UPDATE_ID-update.hook /usr/share/libalpm/hooks/$UPDATE_ID-update.hook 644"
     [dnf]="$UPDATE_ID-update.actions /etc/dnf/libdnf5-plugins/actions.d/$UPDATE_ID-update.actions 644"
@@ -108,27 +110,73 @@ remove_legacy_hook() {
 }
 
 install_update_hooks() {
-    local checkout="$1" owner="$2" manager="$3" source target mode
+    local checkout="$1" update_source="$2" owner="$3" manager="$4" source target mode
     read -r source target mode <<<"${UPDATE_HOOKS[$manager]}"
     run_root install -Dm755 "$checkout/packaging/system-update" "$UPDATE_LIB_DIR/system-update"
     run_root install -Dm"$mode" "$checkout/packaging/$source" "$target"
     if [[ $manager == pacman ]] && grep -qa 'NetworkAccess' /usr/lib/libalpm.so.*; then
         run_root sed -i '/^Exec = /a NetworkAccess = allowed' "$target"
     fi
-    printf '%s\n%s\n' "$checkout" "$owner" | run_root install -Dm644 /dev/stdin "$UPDATE_STATE_DIR/source"
+    printf '%s\n%s\n' "$update_source" "$owner" | run_root install -Dm644 /dev/stdin "$UPDATE_STATE_DIR/source"
     remove_legacy_hook
 }
 
 install_user_updater() {
-    local checkout="$1"
+    local checkout="$1" update_source="$2"
     install -Dm755 "$checkout/packaging/system-update" "$UPDATE_USER_DIR/system-update"
     mkdir -p "$USER_STATE_DIR"
-    printf '%s\n%s\n' "$checkout" "$(id -un)" >"$UPDATE_USER_SOURCE"
+    printf '%s\n%s\n' "$update_source" "$(id -un)" >"$UPDATE_USER_SOURCE"
     if $RVC_ATOMIC; then
         enable_user_unit "$checkout" "$UPDATE_LOGIN_UNIT"
     else
         enable_user_unit "$checkout" "$UPDATE_UNIT"
     fi
+}
+
+update_source_url() {
+    local checkout="$1" url rest
+    url=$(git -C "$checkout" remote get-url origin 2>/dev/null) || return 1
+    case $url in
+    git@*:*)
+        rest=${url#git@}
+        url="https://${rest/://}"
+        ;;
+    ssh://git@*) url="https://${url#ssh://git@}" ;;
+    esac
+    printf '%s\n' "$url"
+}
+
+prepare_update_source() {
+    local checkout="$1" url branch
+    [[ $checkout -ef $UPDATE_SOURCE_DIR ]] && return 0
+    if ! url=$(update_source_url "$checkout"); then
+        echo "$checkout has no origin remote to keep an update copy of $UPDATE_TITLE from."
+        exit 1
+    fi
+    echo "Keeping a copy of $UPDATE_TITLE in $UPDATE_SOURCE_DIR for updates..."
+    if ! git -C "$UPDATE_SOURCE_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+        rm -rf "$UPDATE_SOURCE_DIR"
+        mkdir -p "$(dirname "$UPDATE_SOURCE_DIR")"
+        if ! env "${UPDATE_GIT_ENV[@]}" git clone --quiet --recurse-submodules "$url" "$UPDATE_SOURCE_DIR"; then
+            echo "Could not clone $url into $UPDATE_SOURCE_DIR."
+            exit 1
+        fi
+        return 0
+    fi
+    git -C "$UPDATE_SOURCE_DIR" remote set-url origin "$url"
+    branch=$(git -C "$UPDATE_SOURCE_DIR" symbolic-ref --short HEAD)
+    if ! env "${UPDATE_GIT_ENV[@]}" git -C "$UPDATE_SOURCE_DIR" fetch --quiet origin; then
+        echo "Could not fetch $url into $UPDATE_SOURCE_DIR."
+        exit 1
+    fi
+    git -C "$UPDATE_SOURCE_DIR" checkout --quiet --force -B "$branch" "origin/$branch"
+    env "${UPDATE_GIT_ENV[@]}" git -C "$UPDATE_SOURCE_DIR" submodule update --init --recursive --quiet
+}
+
+remove_update_source() {
+    [[ -d $UPDATE_SOURCE_DIR ]] || return 0
+    rm -rf "$UPDATE_SOURCE_DIR"
+    rmdir --ignore-fail-on-non-empty "$(dirname "$UPDATE_SOURCE_DIR")"
 }
 
 register_system_updates() {
@@ -138,8 +186,9 @@ register_system_updates() {
         return 0
     fi
     if $RVC_ATOMIC; then
+        prepare_update_source "$checkout"
         echo "Registering $UPDATE_TITLE to update at login after system updates..."
-        install_user_updater "$checkout"
+        install_user_updater "$checkout" "$UPDATE_SOURCE_DIR"
         return 0
     fi
     if ! manager=$(package_manager); then
@@ -147,9 +196,10 @@ register_system_updates() {
         unregister_system_updates
         return 0
     fi
+    prepare_update_source "$checkout"
     echo "Registering $UPDATE_TITLE with system updates..."
-    install_update_hooks "$checkout" "$(id -un)" "$manager"
-    install_user_updater "$checkout"
+    install_update_hooks "$checkout" "$UPDATE_SOURCE_DIR" "$(id -un)" "$manager"
+    install_user_updater "$checkout" "$UPDATE_SOURCE_DIR"
 }
 
 unregister_system_updates() {
@@ -168,6 +218,7 @@ unregister_system_updates() {
     disable_user_unit "$UPDATE_LOGIN_UNIT"
     rm -rf "$UPDATE_USER_DIR"
     rm -f "$UPDATE_PENDING" "$UPDATE_USER_SOURCE"
+    remove_update_source
 }
 
 remove_installed_runtime() {

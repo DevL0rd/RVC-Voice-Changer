@@ -50,7 +50,7 @@ cd RVC-Voice-Changer
 ./install.sh
 ```
 
-That's it. The installer adds any system packages you're missing, builds a private Python runtime, picks the right PyTorch for your NVIDIA or AMD graphics card (or your CPU), downloads the pitch and speech models RVC needs, installs the widget and starts the background service. Everything it runs lives in `~/.local/share/Linux-RVC-Voice-Changer`, so the checkout is only where updates come from. It only asks for `sudo` to add missing packages and to hook into system updates.
+That's it. The installer adds any system packages you're missing, builds a private Python runtime, picks the right PyTorch for your NVIDIA or AMD graphics card (or your CPU), downloads the pitch and speech models RVC needs, installs the widget and starts the background service. Everything it runs lives in `~/.local/share/Linux-RVC-Voice-Changer`, and it keeps its own copy of the voice changer for updates, so you can delete the folder you cloned once it's installed. It only asks for `sudo` to add missing packages and to hook into system updates.
 
 > [!TIP]
 > Add **RVC Voice Changer** to your panel from **Add Widgets**, drop a voice into your [voice folder](#voices), then pick **RVC Virtual Microphone** as the input device in Discord, OBS or your game.

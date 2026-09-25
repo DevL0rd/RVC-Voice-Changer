@@ -38,7 +38,7 @@ if $SYSTEM_UPDATE_ROOT; then
         echo "--system-update-root runs from the system update hook."
         exit 1
     fi
-    install_update_hooks "$REPO_DIR" "$OWNER" "$(package_manager)"
+    install_update_hooks "$REPO_DIR" "$REPO_DIR" "$OWNER" "$(package_manager)"
     exit 0
 fi
 
@@ -334,7 +334,7 @@ else:
 PY
 
 if $SYSTEM_UPDATE; then
-    install_user_updater "$REPO_DIR"
+    install_user_updater "$REPO_DIR" "$REPO_DIR"
     notify_updated "The voice changer is up to date. Restart Plasma or log out and back in to load the updated widget."
     exit 0
 fi
