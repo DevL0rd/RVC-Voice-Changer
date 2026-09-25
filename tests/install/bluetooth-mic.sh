@@ -5,7 +5,7 @@ SOURCE="bluez_input.E8:07:BF:9C:1D:B7"
 API="http://127.0.0.1:17843/v1"
 
 state() {
-    curl -s "$API/state" | python3 -c "import json, sys; state = json.load(sys.stdin); runtime = json.load(sys.stdin)['runtime']; print(runtime.get('status', ''), '|', runtime.get('error') or '')"
+    curl -s "$API/state" | python3 -c "import json, sys; runtime = json.load(sys.stdin)['runtime']; print(runtime.get('status', ''), '|', runtime.get('error') or '')"
 }
 
 input_device() {
