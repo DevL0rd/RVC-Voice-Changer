@@ -2,7 +2,7 @@
 set -uo pipefail
 
 cd /opt/install-test/snapshots || exit 1
-KEPT='\./\.config/Linux-RVC-Voice-Changer(/|$)'
+KEPT='\./\.config/Linux-RVC-Voice-Changer(/|$)|\./\.local/share/Linux-RVC-Voice-Changer(/models(/TestVoice(/model\.pth)?)?)?$'
 NOISE='\./\.local/state/(UserFeedback\.|kglobalshortcutsstaterc)|\./\.local/share/flatpak(/|$)'
 failed=0
 for snapshot in system etc home-files home-folders session; do

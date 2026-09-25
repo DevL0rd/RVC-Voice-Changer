@@ -5,15 +5,21 @@ cd "$(dirname "$0")/../.."
 CONTAINER="rvc-install-test"
 IMAGE="${RVC_TEST_IMAGE:-archlinux:latest}"
 CHECKOUT="/home/tester/RVC-Voice-Changer"
+MOVED="/home/tester/moved"
 ASSETS=(predictors/rmvpe.pt predictors/fcpe.pt embedders/contentvec/pytorch_model.bin embedders/contentvec/config.json)
+SESSION_ENV=(-e USER=tester -e LOGNAME=tester -e XDG_RUNTIME_DIR=/run/user/1000
+    -e DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus -e WAYLAND_DISPLAY=wayland-0 -e RVC_TORCH_BACKEND=cpu)
 
 as_root() {
     docker exec "$CONTAINER" "$@"
 }
 
 as_tester() {
-    docker exec -u tester -w "$CHECKOUT" -e USER=tester -e LOGNAME=tester -e XDG_RUNTIME_DIR=/run/user/1000 \
-        -e DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus -e WAYLAND_DISPLAY=wayland-0 -e RVC_TORCH_BACKEND=cpu "$CONTAINER" "$@"
+    docker exec -u tester -w "$CHECKOUT" "${SESSION_ENV[@]}" "$CONTAINER" "$@"
+}
+
+as_tester_at_home() {
+    docker exec -u tester -w /home/tester "${SESSION_ENV[@]}" "$CONTAINER" "$@"
 }
 
 step() {
@@ -34,7 +40,8 @@ as_tester git config --global --add safe.directory '*'
 step "Installing the voice changer's dependencies"
 as_tester packaging/dependencies.sh
 
-step "Using placeholder pitch and speech models instead of downloading them"
+step "Leaving a voice, placeholder pitch and speech models and a Python runtime in the checkout like older versions did"
+as_tester bash -c 'mkdir -p models/TestVoice .venv/bin && echo placeholder >models/TestVoice/model.pth'
 for asset in "${ASSETS[@]}"; do
     as_tester bash -c 'mkdir -p "$(dirname "rvc/models/$1")" && echo placeholder >"rvc/models/$1"' _ "$asset"
 done
@@ -46,19 +53,28 @@ as_root /opt/install-test/snapshot.sh before
 
 step "Installing the voice changer"
 as_tester ./install.sh
-sleep 15
+
+step "Checking that the old checkout files moved out of the checkout"
+as_tester /opt/install-test/migrated.sh "$CHECKOUT" "${ASSETS[@]}"
 
 step "Checking that the voice changer runs"
-as_tester /opt/install-test/verify.sh
+as_tester /opt/install-test/verify.sh "$CHECKOUT"
+
+step "Moving the checkout away and checking that the voice changer still runs"
+as_tester_at_home mv "$CHECKOUT" "$MOVED"
+as_tester_at_home systemctl --user restart linux-rvc-voice-changer.service
+as_tester_at_home /opt/install-test/verify.sh "$CHECKOUT"
+as_tester_at_home mv "$MOVED" "$CHECKOUT"
 
 step "Uninstalling the voice changer"
 as_tester ./uninstall.sh
 sleep 10
 
-step "Checking that uninstalling left the system as it was"
+step "Checking that uninstalling left the system as it was and kept the voice"
 as_root /opt/install-test/snapshot.sh after
 as_root /opt/install-test/compare.sh
-leftovers=$(as_tester git status --porcelain --ignored | grep -v '__pycache__/$' || true)
+as_tester test -f /home/tester/.local/share/Linux-RVC-Voice-Changer/models/TestVoice/model.pth
+leftovers=$(as_tester git status --porcelain --ignored)
 if [[ -n $leftovers ]]; then
     printf 'Uninstalling left files in the checkout:\n%s\n' "$leftovers"
     exit 1
