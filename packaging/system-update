@@ -18,6 +18,13 @@ else
     STATE_FILE="${UPDATE_SOURCE_STATE:-$HOME/.local/state/$ID/source}"
 fi
 [[ -r $STATE_FILE ]] || exit 0
+state_dir=$(dirname "$STATE_FILE")
+failed_file="$state_dir/update-failed"
+exec 9>"$state_dir/update.lock"
+if ! flock -n 9; then
+    log "another update is already running, skipping"
+    exit 0
+fi
 mapfile -t state <"$STATE_FILE"
 checkout="${state[0]:-}"
 owner="${state[1]:-}"
@@ -81,13 +88,25 @@ if ! pull_updates && [[ ! -e $pending ]]; then
     log "the $TITLE runtime is missing or built for another Python, rebuilding it"
 fi
 
+inputs="$(git_owner rev-parse HEAD) python$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
+if [[ $(cat "$failed_file" 2>/dev/null) == "$inputs" ]]; then
+    log "last update failed for these inputs, skipping; run ./install.sh to retry"
+    exit 0
+fi
+status=0
 if [[ $EUID -eq 0 ]]; then
-    (cd "$checkout" && "$checkout/install.sh" --system-update-root --owner "$owner")
+    (cd "$checkout" && "$checkout/install.sh" --system-update-root --owner "$owner") || status=1
 fi
 if [[ $EUID -ne 0 || -S /run/user/$uid/bus ]]; then
-    (cd "$checkout" && as_owner "$checkout/install.sh" --system-update)
+    (cd "$checkout" && as_owner "$checkout/install.sh" --system-update) || status=1
 else
     as_owner mkdir -p "$(dirname "$pending")"
     as_owner touch "$pending"
     log "$TITLE will finish updating at your next login"
+fi
+if [[ $status -ne 0 ]]; then
+    printf '%s\n' "$inputs" >"$failed_file"
+    log "the update failed, it will not be retried until the source or Python changes"
+else
+    rm -f "$failed_file"
 fi

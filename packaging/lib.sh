@@ -118,6 +118,7 @@ install_update_hooks() {
         run_root sed -i '/^Exec = /a NetworkAccess = allowed' "$target"
     fi
     printf '%s\n%s\n' "$update_source" "$owner" | run_root install -Dm644 /dev/stdin "$UPDATE_STATE_DIR/source"
+    run_root rm -f "$UPDATE_STATE_DIR/update-failed"
     remove_legacy_hook
 }
 
@@ -126,6 +127,7 @@ install_user_updater() {
     install -Dm755 "$checkout/packaging/system-update" "$UPDATE_USER_DIR/system-update"
     mkdir -p "$USER_STATE_DIR"
     printf '%s\n%s\n' "$update_source" "$(id -un)" >"$UPDATE_USER_SOURCE"
+    rm -f "$USER_STATE_DIR/update-failed"
     if $RVC_ATOMIC; then
         enable_user_unit "$checkout" "$UPDATE_LOGIN_UNIT"
     else
