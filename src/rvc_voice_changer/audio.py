@@ -37,7 +37,7 @@ def list_audio_devices() -> dict[str, list[dict[str, str]]]:
     for item in objects:
         info = item.get("info") or {}
         props = info.get("props") or {}
-        media_class = props.get("media.class")
+        media_class = str(props.get("media.class") or "")
         name = str(props.get("node.name") or "")
         if not name or name in VIRTUAL_NODE_NAMES:
             continue
@@ -63,9 +63,9 @@ def list_audio_devices() -> dict[str, list[dict[str, str]]]:
                 seen.add(key)
             continue
         entry = {"id": name, "name": _label(props)}
-        if media_class == "Audio/Source":
+        if media_class.startswith("Audio/Source"):
             target = "inputs"
-        elif media_class == "Audio/Sink":
+        elif media_class.startswith("Audio/Sink"):
             target = "outputs"
         else:
             continue
