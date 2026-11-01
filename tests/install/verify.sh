@@ -41,6 +41,26 @@ else
     echo "note: $(pacman -Q pacman) runs hooks with network access and has no NetworkAccess option"
     check "the system update hook leaves out the NetworkAccess option this pacman doesn't know" "! grep -q NetworkAccess $hook"
 fi
+check "the system update hook only triggers for the packages the voice changer depends on" "! grep -q '^Target = \*' $hook && grep -q '^Target = python$' $hook && grep -q '^Target = pipewire$' $hook"
+check "the updater recorded the dependencies it was built with" "test -s $HOME/.local/state/linux-rvc-voice-changer/built-inputs"
+check "the updater does nothing when nothing changed" "out=\$($HOME/.local/lib/linux-rvc-voice-changer/system-update 2>&1); ! grep -qE 'rebuilding|updated to|finish updating' <<<\"\$out\""
+check "the updater ships the shared file list it removes itself with" "test -f /usr/lib/linux-rvc-voice-changer/lib.sh && test -f $HOME/.local/lib/linux-rvc-voice-changer/lib.sh && test -f /usr/lib/linux-rvc-voice-changer/linux-rvc-voice-changer-update.hook && test -f $HOME/.local/lib/linux-rvc-voice-changer/linux-rvc-voice-changer-update.hook"
+gone_updater_removes_itself() {
+    local fake lib state
+    fake=$(mktemp -d)
+    lib="$fake/.local/lib/linux-rvc-voice-changer"
+    state="$fake/.local/state/linux-rvc-voice-changer"
+    mkdir -p "$lib" "$state"
+    cp "$HOME/.local/lib/linux-rvc-voice-changer/system-update" "$HOME/.local/lib/linux-rvc-voice-changer/lib.sh" "$HOME/.local/lib/linux-rvc-voice-changer/linux-rvc-voice-changer-update.hook" "$lib/"
+    printf '%s\n%s\n' "$fake/gone-checkout" "$(id -un)" >"$state/source"
+    HOME=$fake UPDATE_SOURCE_STATE=$state/source "$lib/system-update"
+    local status=$?
+    local left
+    left=$(ls -A "$lib" "$state" 2>/dev/null)
+    rm -rf "$fake"
+    [[ $status -eq 0 && -z $left ]]
+}
+check "the updater removes its own hook files when the app is gone" "gone_updater_removes_itself"
 check "the update unit is enabled" "systemctl --user is-enabled linux-rvc-voice-changer-update.service"
 check "the updater runs from its installed copy" "test -x $HOME/.local/lib/linux-rvc-voice-changer/system-update && grep -q '^ExecStart=$HOME/.local/lib/linux-rvc-voice-changer/system-update$' $units/linux-rvc-voice-changer-update.service"
 check "Plasma runs" "systemctl --user is-active plasma-plasmashell.service"

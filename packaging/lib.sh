@@ -24,11 +24,16 @@ declare -A UPDATE_HOOKS=(
     [zypper]="$UPDATE_ID-update.zypp /usr/lib/zypp/plugins/commit/$UPDATE_ID-update 755"
     [apt-get]="$UPDATE_ID-update.apt /etc/apt/apt.conf.d/99$UPDATE_ID-update 644"
 )
+UPDATE_HOOK_FILE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/$UPDATE_ID-update.hook"
 RVC_OS_ID=$(. /etc/os-release && printf '%s' "$ID")
 RVC_ATOMIC=false
 if [[ -e /run/ostree-booted || $RVC_OS_ID == steamos ]]; then
     RVC_ATOMIC=true
 fi
+
+pacman_dependency_packages() {
+    sed -n 's/^Target = //p' "$UPDATE_HOOK_FILE"
+}
 
 run_root() {
     if [[ $EUID -eq 0 ]]; then
@@ -113,21 +118,27 @@ install_update_hooks() {
     local checkout="$1" update_source="$2" owner="$3" manager="$4" source target mode
     read -r source target mode <<<"${UPDATE_HOOKS[$manager]}"
     run_root install -Dm755 "$checkout/packaging/system-update" "$UPDATE_LIB_DIR/system-update"
+    run_root install -Dm644 "$checkout/packaging/lib.sh" "$UPDATE_LIB_DIR/lib.sh"
+    run_root install -Dm644 "$checkout/packaging/$UPDATE_ID-update.hook" "$UPDATE_LIB_DIR/$UPDATE_ID-update.hook"
     run_root install -Dm"$mode" "$checkout/packaging/$source" "$target"
     if [[ $manager == pacman ]] && grep -qa 'NetworkAccess' /usr/lib/libalpm.so.*; then
         run_root sed -i '/^Exec = /a NetworkAccess = allowed' "$target"
     fi
     printf '%s\n%s\n' "$update_source" "$owner" | run_root install -Dm644 /dev/stdin "$UPDATE_STATE_DIR/source"
     run_root rm -f "$UPDATE_STATE_DIR/update-failed"
+    run_root "$UPDATE_LIB_DIR/system-update" --record-built
     remove_legacy_hook
 }
 
 install_user_updater() {
     local checkout="$1" update_source="$2"
     install -Dm755 "$checkout/packaging/system-update" "$UPDATE_USER_DIR/system-update"
+    install -Dm644 "$checkout/packaging/lib.sh" "$UPDATE_USER_DIR/lib.sh"
+    install -Dm644 "$checkout/packaging/$UPDATE_ID-update.hook" "$UPDATE_USER_DIR/$UPDATE_ID-update.hook"
     mkdir -p "$USER_STATE_DIR"
     printf '%s\n%s\n' "$update_source" "$(id -un)" >"$UPDATE_USER_SOURCE"
     rm -f "$USER_STATE_DIR/update-failed"
+    "$UPDATE_USER_DIR/system-update" --record-built
     if $RVC_ATOMIC; then
         enable_user_unit "$checkout" "$UPDATE_LOGIN_UNIT"
     else
@@ -204,7 +215,7 @@ register_system_updates() {
     install_user_updater "$checkout" "$UPDATE_SOURCE_DIR"
 }
 
-unregister_system_updates() {
+remove_system_update_files() {
     local entry source target mode
     for entry in "${UPDATE_HOOKS[@]}"; do
         read -r source target mode <<<"$entry"
@@ -216,10 +227,19 @@ unregister_system_updates() {
     if [[ -e $UPDATE_STATE_DIR || -e $UPDATE_LIB_DIR ]]; then
         run_root rm -rf "$UPDATE_STATE_DIR" "$UPDATE_LIB_DIR"
     fi
+}
+
+remove_user_update_files() {
     disable_user_unit "$UPDATE_UNIT"
     disable_user_unit "$UPDATE_LOGIN_UNIT"
     rm -rf "$UPDATE_USER_DIR"
-    rm -f "$UPDATE_PENDING" "$UPDATE_USER_SOURCE"
+    rm -f "$UPDATE_PENDING" "$UPDATE_USER_SOURCE" "$USER_STATE_DIR/update-failed" "$USER_STATE_DIR/built-inputs" "$USER_STATE_DIR/update.lock"
+    rmdir --ignore-fail-on-non-empty "$USER_STATE_DIR" 2>/dev/null || true
+}
+
+unregister_system_updates() {
+    remove_system_update_files
+    remove_user_update_files
     remove_update_source
 }
 

@@ -4,6 +4,7 @@ set -uo pipefail
 exec 1>&2
 export HOME="${HOME:-/root}"
 export PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/bin:/bin}"
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib.sh"
 ID="linux-rvc-voice-changer"
 TITLE="RVC Voice Changer"
 GIT_ENV=(GIT_TERMINAL_PROMPT=0 GIT_ASKPASS= GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15")
@@ -38,6 +39,7 @@ else
     data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/Linux-RVC-Voice-Changer"
 fi
 pending="$home/.local/state/$ID/update-pending"
+built_file="$state_dir/built-inputs"
 
 as_owner() {
     if [[ $EUID -ne 0 ]]; then
@@ -47,6 +49,21 @@ as_owner() {
     runuser -u "$owner" -- env -i HOME="$home" USER="$owner" LOGNAME="$owner" PATH="$home/.local/bin:/usr/local/bin:/usr/bin:/bin" \
         LANG="${LANG:-C.UTF-8}" XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
         "${GIT_ENV[@]}" "$@"
+}
+
+dependency_versions() {
+    if command -v pacman >/dev/null 2>&1; then
+        pacman -Q $(pacman_dependency_packages) 2>/dev/null
+    elif command -v rpm >/dev/null 2>&1; then
+        rpm -q python3 python3-devel gcc pipewire-utils pipewire-pulseaudio wireplumber pulseaudio-utils kf6-kpackage kf6-kdeclarative qt6-qtdeclarative glib2 nvidia-driver 2>&1
+    elif command -v dpkg-query >/dev/null 2>&1; then
+        dpkg-query -W -f='${binary:Package} ${Version}\n' python3 python3-venv python3-dev gcc pipewire-bin pipewire-pulse wireplumber pulseaudio-utils kpackagetool6 libglib2.0-bin 2>&1
+    fi
+    python3 -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>&1
+}
+
+dependency_fingerprint() {
+    dependency_versions | sort | sha256sum | cut -d' ' -f1
 }
 
 git_owner() {
@@ -79,16 +96,38 @@ runtime_current() {
     [[ -d $data_dir/venv/lib/python$version && -x $data_dir/runtime/bin/rvc-voice-changer ]]
 }
 
-if [[ ! -d $checkout ]] || ! git_owner rev-parse --git-dir >/dev/null 2>&1; then
-    log "checkout $checkout is gone or not a git repository, skipping"
+if [[ ${1:-} == --record-built ]]; then
+    dependency_fingerprint >"$built_file"
     exit 0
 fi
+if [[ ! -d $checkout ]]; then
+    if [[ -d $home ]]; then
+        log "checkout $checkout is gone, removing the $TITLE update hook"
+        if [[ $EUID -eq 0 ]]; then
+            remove_system_update_files
+        else
+            remove_user_update_files
+        fi
+        exit 0
+    fi
+    log "checkout $checkout is gone and $home is missing, skipping"
+    exit 0
+fi
+if ! git_owner rev-parse --git-dir >/dev/null 2>&1; then
+    log "git could not read $checkout, skipping"
+    exit 0
+fi
+fingerprint=$(dependency_fingerprint)
 if ! pull_updates && [[ ! -e $pending ]]; then
-    runtime_current && exit 0
-    log "the $TITLE runtime is missing or built for another Python, rebuilding it"
+    if [[ $(cat "$built_file" 2>/dev/null) == "$fingerprint" ]]; then
+        runtime_current && exit 0
+        log "the $TITLE runtime is missing or built for another Python, rebuilding it"
+    else
+        log "a package $TITLE depends on changed, rebuilding"
+    fi
 fi
 
-inputs="$(git_owner rev-parse HEAD) python$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
+inputs="$(git_owner rev-parse HEAD) $fingerprint"
 if [[ $(cat "$failed_file" 2>/dev/null) == "$inputs" ]]; then
     log "last update failed for these inputs, skipping; run ./install.sh to retry"
     exit 0
@@ -106,7 +145,8 @@ else
 fi
 if [[ $status -ne 0 ]]; then
     printf '%s\n' "$inputs" >"$failed_file"
-    log "the update failed, it will not be retried until the source or Python changes"
+    log "the update failed, it will not be retried until the source or its dependencies change"
 else
     rm -f "$failed_file"
+    printf '%s\n' "$fingerprint" >"$built_file"
 fi

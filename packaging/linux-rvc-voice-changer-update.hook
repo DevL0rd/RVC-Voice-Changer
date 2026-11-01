@@ -1,7 +1,18 @@
 [Trigger]
+Operation = Install
 Operation = Upgrade
 Type = Package
-Target = *
+Target = python
+Target = gcc
+Target = pipewire
+Target = pipewire-pulse
+Target = wireplumber
+Target = libpulse
+Target = kpackage
+Target = kdeclarative
+Target = qt6-declarative
+Target = glib2
+Target = nvidia-utils
 
 [Action]
 Description = Updating RVC Voice Changer...
