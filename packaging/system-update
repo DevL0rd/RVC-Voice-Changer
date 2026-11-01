@@ -52,8 +52,10 @@ as_owner() {
 }
 
 dependency_versions() {
+    local packages
     if command -v pacman >/dev/null 2>&1; then
-        pacman -Q $(pacman_dependency_packages) 2>/dev/null
+        mapfile -t packages < <(pacman_dependency_packages)
+        pacman -Q "${packages[@]}" 2>/dev/null
     elif command -v rpm >/dev/null 2>&1; then
         rpm -q python3 python3-devel gcc pipewire-utils pipewire-pulseaudio wireplumber pulseaudio-utils kf6-kpackage kf6-kdeclarative qt6-qtdeclarative glib2 nvidia-driver 2>&1
     elif command -v dpkg-query >/dev/null 2>&1; then
